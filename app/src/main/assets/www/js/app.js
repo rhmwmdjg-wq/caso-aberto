@@ -242,10 +242,10 @@
 
   // Os colegas robôs agem um de cada vez, com pausas, para parecer gente de verdade.
   function agendarRobos() {
-    if (!H || !H.solo || H.tRobo) return;
+    if (!H || H.tRobo) return;
     if (!H.motor.robosPendentes().length) return;
     H.tRobo = setTimeout(function () {
-      if (!H || !H.solo) return;
+      if (!H) return;
       H.tRobo = null;
       var pend = H.motor.robosPendentes();
       if (!pend.length) return;
@@ -255,7 +255,7 @@
     }, 2500 + Math.random() * 4500);
   }
   function soloAdiantarRobos() {
-    if (!H || !H.solo) return;
+    if (!H) return;
     clearTimeout(H.tRobo); H.tRobo = null;
     var pend, guarda = 0;
     while ((pend = H.motor.robosPendentes()).length && guarda++ < 50) {
@@ -529,14 +529,23 @@
 
     h += '<h2 class="secao">Regras da mesa</h2>';
     if (V.souHost) {
-      h += '<div class="segmento" style="margin-bottom:10px"><button data-a="treino" data-v="0" class="' + (!V.config.treino ? "sel" : "") + '">🎭 Com Cúmplice</button><button data-a="treino" data-v="1" class="' + (V.config.treino ? "sel" : "") + '">🧩 Treino (sem)</button></div>';
+      var md = V.config.treino ? "treino" : V.config.robos ? "robos" : "cumplice";
+      h += '<div class="segmento modos" style="margin-bottom:6px">' + [["cumplice", "🎭 Cúmplice"], ["robos", "🤖 Cúmplice robô"], ["treino", "🧩 Treino"]].map(function (m) {
+        return '<button data-a="modo" data-v="' + m[0] + '" class="' + (md === m[0] ? "sel" : "") + '">' + m[1] + "</button>";
+      }).join("") + "</div>";
+      h += '<div class="mudo pequeno" style="margin-bottom:10px">' + ({
+        cumplice: "Um dos jogadores será o Cúmplice, em segredo. Precisa de 3 ou mais pessoas.",
+        robos: "Detetives robôs entram na mesa, e um deles é o Cúmplice. Ótimo para jogar em dupla.",
+        treino: "Ninguém mente. Todos investigam juntos."
+      })[md] + "</div>";
+      if (md === "cumplice" && V.jogadores.length < 3) h += '<div class="cartao pequeno dica-dupla">💡 Vocês são ' + V.jogadores.length + '. Com menos de 3, escolha <b>🤖 Cúmplice robô</b> para jogar com alguém mentindo.</div>';
       h += '<div class="mudo pequeno" style="margin:12px 0 6px">Tempo por rodada</div><div class="segmento">';
       [[0, "Livre"], [180, "3 min"], [300, "5 min"], [480, "8 min"]].forEach(function (t) {
         h += '<button data-a="tempo" data-v="' + t[0] + '" class="' + (V.config.tempoRodada === t[0] ? "sel" : "") + '">' + t[1] + "</button>";
       });
       h += "</div>";
     } else {
-      h += '<div class="cartao pequeno">' + (V.config.treino ? "🧩 Modo treino: sem Cúmplice" : "🎭 Um dos jogadores será o Cúmplice") +
+      h += '<div class="cartao pequeno">' + (V.config.treino ? "🧩 Modo treino: sem Cúmplice" : V.config.robos ? "🤖 Cúmplice robô: detetives robôs na mesa, um deles mente" : "🎭 Um dos jogadores será o Cúmplice") +
         "<br>⏱️ " + (V.config.tempoRodada ? Math.round(V.config.tempoRodada / 60) + " min por rodada" : "Rodadas sem limite de tempo") + "</div>";
     }
     h += '<div class="centro" style="margin-top:18px"><button class="link" data-a="regras">📖 Como jogar</button> · <button class="link" data-a="sair">Sair da sala</button></div>';
@@ -569,7 +578,7 @@
     }
     return '<div class="carta-papel detetive"><div class="grande">' + e.icone + '</div><div class="papel-nome">' + esc(e.nome) + "</div>" +
       '<div class="pequeno" style="opacity:.9">' + esc(e.desc) + " Esse dossiê já está no seu caderno.</div>" +
-      (V.solo ? '<div class="pequeno" style="margin-top:12px;opacity:.85">🤖 Seus colegas são detetives robôs, e <b>um deles é o Cúmplice</b>: ele vai plantar pistas falsas no quadro. Use <b>Eu também vi</b>, leia a Conversa e descubra quem está mentindo.</div>'
+      (V.solo || V.robos ? '<div class="pequeno" style="margin-top:12px;opacity:.85">🤖 ' + (V.solo ? "Seus colegas são detetives robôs" : "Há detetives robôs na mesa") + ', e <b>um dos robôs é o Cúmplice</b>: ele vai plantar pistas falsas no quadro. Use <b>Eu também vi</b>, leia a Conversa e descubra quem está mentindo.</div>'
         : V.treino ? '<div class="pequeno" style="margin-top:12px;opacity:.85">Modo treino: ninguém está mentindo. Trabalhem juntos!</div>'
         : '<div class="pequeno" style="margin-top:12px;opacity:.85">⚠️ Um dos seus colegas é o <b>Cúmplice</b>: conhece a verdade e pode plantar pistas falsas. Desconfie de pistas que ninguém mais consegue confirmar.</div>') + "</div>";
   }
@@ -631,7 +640,7 @@
     var t = '<div class="info"><div class="caso-nome">' + V.caso.capa + " " + esc(V.caso.titulo) + '</div><div class="meta">';
     if (V.fase === "rodada") t += "<span>Rodada <b>" + V.rodada + "/" + V.totalRodadas + "</b></span>" + '<span class="relogio" id="relogio"></span>';
     else if (V.solo) t += "<span><b>⚖️ Acusação final</b></span>";
-    else t += "<span><b>⚖️ Acusação</b></span><span>" + V.jogadores.filter(function (j) { return j.votou; }).length + "/" + V.jogadores.length + " votaram</span>";
+    else t += "<span><b>⚖️ Acusação</b></span><span>" + V.jogadores.filter(function (j) { return j.votou && !j.robo; }).length + "/" + V.jogadores.filter(function (j) { return !j.robo; }).length + " votaram</span>";
     t += "</div></div>";
     if (V.souHost) {
       var rot = V.fase === "votacao" ? "Encerrar" : (V.rodada < V.totalRodadas ? "Rodada " + (V.rodada + 1) + " ▶" : "Acusar ▶");
@@ -812,7 +821,7 @@
     h += grupo("Quem é o culpado?", "culpado", c.suspeitos, function (s) { return "<b>" + esc(s.nome) + '</b> <span class="mudo pequeno">· ' + esc(s.ocupacao) + "</span>"; });
     h += grupo("Como foi feito?", "metodo", c.metodos, function (m) { return esc(m.nome); });
     h += grupo("Por quê?", "motivo", c.motivos, function (m) { return esc(m.nome); });
-    if (!V.treino) h += grupo("Quem é o Cúmplice?", "cumplice", V.jogadores.filter(function (j) { return j.id !== V.meuId; }), function (j) { return (j.robo ? "🤖 " : "") + esc(j.nome); });
+    if (!V.treino) h += grupo("Quem é o Cúmplice?", "cumplice", V.jogadores.filter(function (j) { return j.id !== V.meuId && (!(V.solo || V.robos) || j.robo); }), function (j) { return (j.robo ? "🤖 " : "") + esc(j.nome); });
     var completo = v.culpado && v.metodo && v.motivo && (V.treino || v.cumplice);
     h += '<div style="margin-top:18px"><button class="btn prim" data-a="votar"' + (completo ? "" : " disabled") + ">" + (V.meuVoto ? "Atualizar meu voto" : "⚖️ Confirmar acusação") + "</button></div>";
     var falta = V.jogadores.filter(function (j) { return !j.votou && !j.robo; }).map(function (j) { return j.nome; });
@@ -912,6 +921,7 @@
         "<p><b>4. Quadro.</b> Publique no quadro o que quiser mostrar. Se você achou a mesma pista que outra pessoa, toque em <b>Eu também vi</b>: o jogo confere, então pista confirmada é pista verdadeira.</p>" +
         "<p><b>5. O Cúmplice</b> também investiga, mas pode plantar até 2 pistas falsas, que aparecem no quadro como se fossem reais. Pista que ninguém consegue confirmar merece desconfiança.</p>" +
         "<p><b>6. Acusação.</b> No fim, cada um vota: quem é o culpado, como foi feito, por quê e quem é o Cúmplice. Vale a acusação mais votada.</p>" +
+        "<p><b>Em dupla:</b> com só 2 pessoas, crie a sala e escolha <b>🤖 Cúmplice robô</b> nas regras da mesa. Detetives robôs entram no jogo e um deles é o Cúmplice.</p>" +
         "<p><b>Sozinho:</b> no botão <b>Jogar sozinho</b>, você investiga com 3 detetives robôs, sem internet. Um deles é o Cúmplice: desconfie de pista que ninguém confirma e preste atenção quando um robô diz que não viu nada no lugar.</p>" +
         "<p><b>Dica:</b> joguem numa chamada de voz ou vídeo no WhatsApp. Discutir é metade da graça!</p></div>" +
         '<button class="btn prim" data-a="fechar">Entendi</button>');
@@ -1030,6 +1040,10 @@
     removerOk: function (el) { fecharModal(); enviarAcao({ tipo: "remover", id: el.dataset.id }); },
     caso: function (el) { if (V.souHost) enviarAcao({ tipo: "config", casoId: el.dataset.id }); },
     treino: function (el) { enviarAcao({ tipo: "config", treino: el.dataset.v === "1" }); },
+    modo: function (el) {
+      var v = el.dataset.v;
+      enviarAcao({ tipo: "config", treino: v === "treino", robos: v === "robos" });
+    },
     tempo: function (el) { enviarAcao({ tipo: "config", tempoRodada: parseInt(el.dataset.v, 10) }); },
     iniciar: function () { enviarAcao({ tipo: "iniciar" }); },
     revelar: function () {
@@ -1043,7 +1057,7 @@
     avancarJogo: function () {
       var falta;
       if (V.fase === "votacao") {
-        falta = V.jogadores.filter(function (j) { return !j.votou; }).map(function (j) { return j.nome; });
+        falta = V.jogadores.filter(function (j) { return !j.votou && !j.robo; }).map(function (j) { return j.nome; });
         if (!falta.length) return;
         abrirModal('<p>Ainda não votaram: <b>' + esc(falta.join(", ")) + "</b>.</p><p class=\"mudo pequeno\">Encerrar agora conta só os votos já feitos.</p>" +
           '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Esperar</button><button class="btn prim" data-a="encerrarOk">Encerrar</button></div>');

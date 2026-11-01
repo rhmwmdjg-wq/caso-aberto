@@ -31,7 +31,7 @@
       hostId: null,
       jogadores: {},
       ordem: [],
-      config: { casoId: this.casos[0].id, nivel: this.casos[0].dificuldade, treino: false, tempoRodada: 0, solo: false },
+      config: { casoId: this.casos[0].id, nivel: this.casos[0].dificuldade, treino: false, tempoRodada: 0, solo: false, robos: false },
       partida: null,
       chat: [],
       seq: 1,
@@ -126,7 +126,8 @@
         if (!ehHost || s.fase !== "lobby") return { ok: false, erro: "Só o anfitrião muda as regras." };
         if (typeof a.nivel === "string") this.definirNivel(a.nivel);
         if (a.casoId && this.caso(a.casoId).id === a.casoId) { s.config.casoId = a.casoId; s.config.nivel = this.caso(a.casoId).dificuldade; }
-        if (typeof a.treino === "boolean") s.config.treino = a.treino;
+        if (typeof a.treino === "boolean") { s.config.treino = a.treino; if (a.treino) s.config.robos = false; }
+        if (typeof a.robos === "boolean") { s.config.robos = a.robos; if (a.robos) s.config.treino = false; }
         if (typeof a.tempoRodada === "number") s.config.tempoRodada = Math.max(0, Math.min(900, a.tempoRodada | 0));
         return { ok: true };
       }
@@ -157,7 +158,8 @@
     return { ok: false, erro: "Ação inválida." };
   };
 
-  P.minimoJogadores = function () { return (this.s.config.treino || this.s.config.solo) ? 1 : 3; };
+  P.comRobos = function () { return !!(this.s.config.solo || this.s.config.robos); };
+  P.minimoJogadores = function () { return (this.s.config.treino || this.comRobos()) ? 1 : 3; };
 
   /* ---------------- Robôs do modo solo ---------------- */
   var NOMES_ROBOS = ["Inspetora Vilma", "Detetive Bento", "Agente Nogueira", "Perita Odete", "Sargento Lauro", "Doutora Ísis", "Cabo Tavares"];
@@ -264,10 +266,13 @@
   P.iniciar = function () {
     var s = this.s;
     if (s.fase !== "lobby") return { ok: false };
-    if (s.config.solo) {
+    if (this.comRobos()) {
+      // Cúmplice robô: completa a mesa com detetives robôs (pelo menos 1), e um deles é o Cúmplice
       this.removerRobos();
       s.config.treino = false;
-      this.criarRobos(3);
+      var humanos = s.ordem.filter(function (i) { return s.jogadores[i].online; }).length;
+      if (humanos > MAX_JOGADORES - 1) return { ok: false, erro: "Com Cúmplice robô cabem até " + (MAX_JOGADORES - 1) + " jogadores." };
+      this.criarRobos(s.config.solo ? 3 : Math.max(1, 4 - humanos));
     }
     var ids = s.ordem.filter(function (i) { return s.jogadores[i].online; });
     if (ids.length < this.minimoJogadores())
@@ -280,8 +285,8 @@
     var mist = embaralhar(ids, this.rand);
     var espsMist = embaralhar(this.esps.map(function (e) { return e.id; }), this.rand);
     var self0 = this;
-    if (s.config.solo) {
-      // no solo, o Cúmplice é sempre um dos robôs
+    if (this.comRobos()) {
+      // com robôs, o Cúmplice é sempre um dos robôs
       var robos = mist.filter(function (i) { return self0.ehRobo(i); });
       var escolhido = robos[Math.floor(this.rand() * robos.length)];
       mist = [escolhido].concat(mist.filter(function (i) { return i !== escolhido; }));
@@ -310,6 +315,7 @@
     s.partida = {
       casoId: caso.id,
       solo: !!s.config.solo,
+      robos: !s.config.solo && !!s.config.robos,
       treino: !!s.config.treino,
       cumpliceId: cumplice,
       papeis: papeis,
@@ -536,7 +542,7 @@
     s.partida = null;
     s.fase = "lobby";
     var self = this;
-    if (s.config.solo) this.removerRobos();
+    if (this.comRobos() || this.humanos().length !== s.ordem.length) this.removerRobos();
     s.ordem.slice().forEach(function (id) {
       var j = s.jogadores[id];
       j.pronto = false;
@@ -578,7 +584,7 @@
         return { id: c.id, titulo: c.titulo, subtitulo: c.subtitulo, dificuldade: c.dificuldade, capa: c.capa, ia: !!c.ia };
       }),
       minimo: this.minimoJogadores(),
-      maximo: s.config.treino ? Math.min(MAX_JOGADORES, this.esps.length) : MAX_JOGADORES
+      maximo: s.config.treino ? Math.min(MAX_JOGADORES, this.esps.length) : s.config.robos ? MAX_JOGADORES - 1 : MAX_JOGADORES
     };
     if (!p) return v;
 
@@ -590,6 +596,7 @@
     };
     v.treino = p.treino;
     v.solo = !!p.solo;
+    v.robos = !!p.robos;
     v.rodada = p.rodada;
     v.totalRodadas = p.totalRodadas;
     v.acoesPorRodada = p.acoesPorRodada;
