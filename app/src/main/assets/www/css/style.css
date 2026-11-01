@@ -424,3 +424,5 @@ textarea.entrada { min-height: 90px; resize: vertical; }
 .gerando-ia { text-align: center; padding: 26px 8px 18px; }
 .lupa-ia { font-size: 54px; display: inline-block; animation: procura 2.4s ease-in-out infinite; }
 @keyframes procura { 0% { transform: translate(-30px, 0) rotate(-10deg); } 25% { transform: translate(0, -10px) rotate(0); } 50% { transform: translate(30px, 0) rotate(10deg); } 75% { transform: translate(0, 8px) rotate(0); } 100% { transform: translate(-30px, 0) rotate(-10deg); } }
+.segmento.modos button { font-size: 13px; padding: 10px 2px; }
+.dica-dupla { border-color: var(--latao); margin-bottom: 10px; }
