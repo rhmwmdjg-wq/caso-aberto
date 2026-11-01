@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+// No GitHub, cada compilação ganha um número maior, para o celular aceitar a atualização.
+def numeroBuild = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'br.casoaberto.jogo'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "br.casoaberto.jogo"
+        minSdk 24
+        targetSdk 34
+        versionCode numeroBuild
+        versionName "1." + numeroBuild
+    }
+
+    // Chave fixa: assim cada APK novo instala por cima do anterior, sem desinstalar.
+    signingConfigs {
+        release {
+            storeFile file("caso-aberto.jks")
+            storePassword "casoaberto2026"
+            keyAlias "casoaberto"
+            keyPassword "casoaberto2026"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}
