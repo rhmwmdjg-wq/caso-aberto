@@ -1,0 +1,48 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar o APK
+        run: gradle assembleRelease --no-daemon
+
+      - name: Renomear o APK
+        run: cp app/build/outputs/apk/release/app-release.apk CasoAberto.apk
+
+      - name: Guardar o APK na aba Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: CasoAberto
+          path: CasoAberto.apk
+
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Caso Aberto 1.${{ github.run_number }}
+          body: Baixe o arquivo CasoAberto.apk abaixo e instale no celular.
+          files: CasoAberto.apk
+          make_latest: true
