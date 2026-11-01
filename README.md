@@ -6,6 +6,8 @@ Um dos jogadores é, em segredo, o **Cúmplice**: ele sabe a verdade e tenta eng
 - 3 a 7 jogadores (modo treino a partir de 1)
 - 3 casos: *O Último Brinde* (fácil), *O Malote da Quermesse* (médio) e *Noite de Temporal* (difícil)
 - Sala com código de 4 letras, quadro de pistas compartilhado, caderno secreto, conversa e votação final
+- **Jogar sozinho** (sem internet): você investiga com 3 detetives robôs, e um deles é o Cúmplice
+- Música de suspense e efeitos sonoros criados pelo próprio app, chuva e lampião na tela, abertura do caso e veredito animados (dá para desligar em **Som e efeitos**)
 
 ---
 
@@ -63,6 +65,8 @@ Dica: joguem numa chamada de voz do WhatsApp.
 | Regras (rodadas, pontos, ações) | `app/src/main/assets/www/js/motor.js` |
 | Telas | `app/src/main/assets/www/js/app.js` e `css/style.css` |
 | Conexão entre celulares | `app/src/main/assets/www/js/rede.js` |
+| Música e efeitos sonoros | `app/src/main/assets/www/js/som.js` |
+| Chuva, abertura e veredito | `app/src/main/assets/www/js/anim.js` |
 | App Android (WebView) | `app/src/main/java/br/casoaberto/jogo/MainActivity.java` |
 
 Para testar no computador sem celular: rode um servidor na pasta `www` e abra
