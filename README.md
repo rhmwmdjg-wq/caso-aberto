@@ -8,6 +8,7 @@ Um dos jogadores é, em segredo, o **Cúmplice**: ele sabe a verdade e tenta eng
 - Sala com código de 4 letras, quadro de pistas compartilhado, caderno secreto, conversa e votação final
 - **Jogar sozinho** (sem internet): você investiga com 3 detetives robôs, e um deles é o Cúmplice
 - **Casos gerados por IA** (Google Gemini): em Som e efeitos → Casos por IA, cole sua chave grátis do Google AI Studio. A chave fica só no celular, nunca no código.
+- **Cenas em 3D (piloto)**: no caso *O Último Brinde*, cada local abre em 3D; gire a câmera e toque na 🔍 dos objetos para examinar. Dá para desligar ou usar o modo leve em Som e efeitos. Feito com Three.js (licença MIT, em `js/3d/LICENSE-three.txt`).
 - **Fotos das cenas**: cada local examinado vira uma polaroide de perícia. O **Fotógrafo** tem uma câmera com 2 fotos para conferir se uma pista do quadro é verdadeira. Com a chave do Gemini, dá para criar fotos das cenas com IA (se o plano permitir).
 - **Em dupla**: escolha **🤖 Cúmplice robô** nas regras da mesa.
 - Avisos quando alguém cai ou volta, e quando todos já usaram as ações da rodada. Quem cai volta sozinho para onde parou.
@@ -71,6 +72,7 @@ Dica: joguem numa chamada de voz do WhatsApp.
 | Conexão entre celulares | `app/src/main/assets/www/js/rede.js` |
 | Música e efeitos sonoros | `app/src/main/assets/www/js/som.js` |
 | Chuva, abertura e veredito | `app/src/main/assets/www/js/anim.js` |
+| Cenas em 3D | `app/src/main/assets/www/js/3d/cena3d.js` |
 | Casos por IA (Gemini) | `app/src/main/assets/www/js/ia.js` |
 | Casos por nível | `app/src/main/assets/www/js/casos-faceis.js`, `casos-medios.js`, `casos-dificeis.js` |
 | App Android (WebView) | `app/src/main/java/br/casoaberto/jogo/MainActivity.java` |
