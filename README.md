@@ -8,6 +8,9 @@ Um dos jogadores é, em segredo, o **Cúmplice**: ele sabe a verdade e tenta eng
 - Sala com código de 4 letras, quadro de pistas compartilhado, caderno secreto, conversa e votação final
 - **Jogar sozinho** (sem internet): você investiga com 3 detetives robôs, e um deles é o Cúmplice
 - **Casos gerados por IA** (Google Gemini): em Som e efeitos → Casos por IA, cole sua chave grátis do Google AI Studio. A chave fica só no celular, nunca no código.
+- **Fotos das cenas**: cada local examinado vira uma polaroide de perícia. O **Fotógrafo** tem uma câmera com 2 fotos para conferir se uma pista do quadro é verdadeira. Com a chave do Gemini, dá para criar fotos das cenas com IA (se o plano permitir).
+- **Em dupla**: escolha **🤖 Cúmplice robô** nas regras da mesa.
+- Avisos quando alguém cai ou volta, e quando todos já usaram as ações da rodada. Quem cai volta sozinho para onde parou.
 - Música de suspense e efeitos sonoros criados pelo próprio app, chuva e lampião na tela, abertura do caso e veredito animados (dá para desligar em **Som e efeitos**)
 
 ---
