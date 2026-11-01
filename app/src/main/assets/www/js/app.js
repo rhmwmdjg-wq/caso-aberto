@@ -35,7 +35,7 @@
     return CORES[idx % CORES.length];
   }
   function avatar(j) {
-    return '<div class="avatar" style="background:' + corDe(j.id) + '">' + esc(j.nome.charAt(0).toUpperCase()) + "</div>";
+    return '<div class="avatar' + (j.robo ? " robo" : "") + '" style="background:' + corDe(j.id) + '">' + (j.robo ? "🤖" : esc(j.nome.charAt(0).toUpperCase())) + "</div>";
   }
   function iniciais(nome) {
     var p = nome.replace(/^(Dr\.|Dona|Seu)\s+/i, "").split(" ");
@@ -43,6 +43,26 @@
   }
   function vibrar(ms) {
     try { if (window.Android && Android.vibrar) Android.vibrar(ms || 60); else if (navigator.vibrate) navigator.vibrate(ms || 60); } catch (e) {}
+  }
+  function som(n) { try { if (window.Som) Som.fx(n); } catch (e) {} }
+  function marcarDepois(mapa, ids) { if (ids.length) setTimeout(function () { ids.forEach(function (i) { mapa[i] = true; }); }, 1200); }
+  function infoDesfecho(d) {
+    return {
+      total: ["verde", "Caso resolvido", "Os detetives acertaram o culpado e desmascararam o Cúmplice!"],
+      parcial: ["verde", "Caso resolvido", "Acertaram o culpado, mas o Cúmplice escapou sem ser descoberto."],
+      empate: ["latao", "Empate", "O Cúmplice foi preso, mas o verdadeiro culpado escapou."],
+      cumplice: ["vermelho", "Caso arquivado", "O Cúmplice venceu! O culpado ficou impune."],
+      resolvido: ["verde", "Caso resolvido", "Bom trabalho, detetives!"],
+      fracasso: ["vermelho", "Caso arquivado", "O culpado escapou desta vez."]
+    }[d];
+  }
+  function climaMusical() {
+    if (!window.Som) return;
+    if (!V) Som.clima("calmo");
+    else if (V.fase === "votacao") Som.clima("climax");
+    else if (V.fase === "rodada") Som.clima(V.rodada >= 3 ? "tenso" : "calmo");
+    else if (V.fase === "resultado") Som.clima("silencio");
+    else Som.clima("calmo");
   }
   function toast(txt, erro) {
     var d = document.createElement("div");
@@ -77,7 +97,8 @@
   var offsetRelogio = 0;
   var ui = {
     shell: null, aba: "investigar", segredo: false, voto: {}, falsa: { idx: null, texto: "", origem: "" },
-    vistosQuadro: 0, vistosChat: 0, faseAnterior: null, rodadaAnterior: 0, cartaRevelada: false, carregando: ""
+    vistosQuadro: 0, vistosChat: 0, faseAnterior: null, rodadaAnterior: 0, cartaRevelada: false, carregando: "",
+    animarCarta: false, animQ: {}, animC: {}
   };
 
   /* ================= ANFITRIÃO ================= */
@@ -175,13 +196,62 @@
     if (!H) return;
     for (var cid in H.conns) H.rede.enviar(cid, { t: "estado", v: H.motor.visao(H.conns[cid]) });
     receberVisao(H.motor.visao(H.meuId));
-    var agora = Date.now();
+    var agora = Date.now(), chave = H.solo ? "ca_solo" : "ca_host";
     if (agora - H.salvarEm > 800) {
       H.salvarEm = agora;
-      LS.set("ca_host", { codigo: H.codigo, ts: agora, estado: H.motor.exportar() });
+      LS.set(chave, { codigo: H.codigo, ts: agora, estado: H.motor.exportar() });
     } else {
       clearTimeout(H.tSalvar);
-      H.tSalvar = setTimeout(function () { if (H) LS.set("ca_host", { codigo: H.codigo, ts: Date.now(), estado: H.motor.exportar() }); }, 900);
+      H.tSalvar = setTimeout(function () { if (H) LS.set(chave, { codigo: H.codigo, ts: Date.now(), estado: H.motor.exportar() }); }, 900);
+    }
+    agendarRobos();
+  }
+
+  /* ================= MODO SOLO (sem internet) ================= */
+  function iniciarSolo(casoId, estadoSalvo) {
+    modo = "host";
+    conectado = true;
+    var motor = new Motor({ casos: CASOS, especialidades: ESPECIALIDADES, codigo: "SOLO", estado: estadoSalvo || null });
+    motor.s.codigo = "SOLO";
+    motor.s.config.solo = true;
+    var meu = motor.entrar(token, meuNome || "Detetive", true);
+    motor.s.hostId = meu.id;
+    H = {
+      motor: motor, meuId: meu.id, conns: {}, visto: {}, codigo: "SOLO", solo: true, salvarEm: 0, tRobo: null,
+      rede: { enviar: function () {}, derrubar: function () {}, fechar: function () {} }
+    };
+    LS.del("ca_cliente");
+    if (!estadoSalvo) {
+      motor.acao(meu.id, { tipo: "config", casoId: casoId });
+      var r = motor.iniciar();
+      if (!r.ok) { sairParaInicio(r.erro || "Não foi possível abrir o caso."); return; }
+    }
+    hostDifundir();
+    if (!estadoSalvo) {
+      try { var idx = 0; CASOS.forEach(function (c, i) { if (c.id === motor.s.partida.casoId) idx = i; }); Anim.abertura(V.caso, idx + 1); } catch (e) {}
+    }
+  }
+
+  // Os colegas robôs agem um de cada vez, com pausas, para parecer gente de verdade.
+  function agendarRobos() {
+    if (!H || !H.solo || H.tRobo) return;
+    if (!H.motor.robosPendentes().length) return;
+    H.tRobo = setTimeout(function () {
+      if (!H || !H.solo) return;
+      H.tRobo = null;
+      var pend = H.motor.robosPendentes();
+      if (!pend.length) return;
+      var id = pend[Math.floor(Math.random() * pend.length)];
+      if (!H.motor.agirRobo(id)) H.motor.s.partida.acoes[id] = 0;
+      hostDifundir();
+    }, 2500 + Math.random() * 4500);
+  }
+  function soloAdiantarRobos() {
+    if (!H || !H.solo) return;
+    clearTimeout(H.tRobo); H.tRobo = null;
+    var pend, guarda = 0;
+    while ((pend = H.motor.robosPendentes()).length && guarda++ < 50) {
+      pend.forEach(function (id) { if (!H.motor.agirRobo(id)) H.motor.s.partida.acoes[id] = 0; });
     }
   }
 
@@ -258,17 +328,21 @@
   }
 
   function sairParaInicio(msg) {
-    if (H) { try { H.rede.fechar(); } catch (e) {} clearTimeout(H.tSalvar); }
+    if (H) { try { H.rede.fechar(); } catch (e) {} clearTimeout(H.tSalvar); clearTimeout(H.tRobo); }
     if (C) { clearTimeout(C.tRecon); try { C.rede.fechar(); } catch (e) {} }
     H = null; C = null; V = null; modo = null; conectado = true; ui.carregando = "";
+    try { Anim.fechar(); } catch (e) {}
+    climaMusicalDepois();
     ui.shell = null;
     fecharModal();
     render();
     if (msg) setTimeout(function () { toast(msg, true); }, 50);
   }
 
+  function climaMusicalDepois() { setTimeout(climaMusical, 0); }
+
   function sairDaSala() {
-    if (modo === "host") LS.del("ca_host"); else LS.del("ca_cliente");
+    if (H && H.solo) LS.del("ca_solo"); else if (modo === "host") LS.del("ca_host"); else LS.del("ca_cliente");
     sairParaInicio();
   }
 
@@ -280,6 +354,18 @@
     // notificações
     if (antes && antes.fase !== v.fase) {
       vibrar(120);
+      if (v.fase === "intro") {
+        ui.animQ = {}; ui.animC = {};
+        try { var idx = 0; v.casos.forEach(function (c, i) { if (c.id === v.caso.id) idx = i; }); Anim.abertura(v.caso, idx + 1); } catch (e) {}
+      }
+      if (v.fase === "resultado" && v.resultado) {
+        try {
+          var Dx = infoDesfecho(v.resultado.desfecho), euCump = v.resultado.cumpliceId === v.meuId;
+          var verde = Dx[0] === "verde", verm = Dx[0] === "vermelho";
+          Anim.desfecho(Dx[1], Dx[0], Dx[2], euCump ? (verm ? true : verde ? false : null) : (verde ? true : verm ? false : null));
+        } catch (e) {}
+      }
+      if (v.fase === "votacao") som("martelo");
       if (v.fase === "intro") { ui.cartaRevelada = false; ui.aba = "investigar"; ui.voto = {}; ui.segredo = false; ui.falsa = { idx: null, texto: "", origem: "" }; ui.vistosQuadro = 0; }
       if (v.fase === "votacao") { ui.aba = "acusar"; toast("⚖️ Hora da acusação!"); }
       if (v.fase === "resultado") fecharModal();
@@ -293,20 +379,31 @@
       var novos = v.quadro.slice(antes.quadro.length);
       novos.forEach(function (q) {
         if (q.autorId === v.meuId) return;
-        if (q.novidade) { vibrar(200); toast("🚨 Novidade no caso!"); }
-        else if (ui.aba !== "quadro") toast("📌 " + q.autor + " publicou uma pista");
+        if (q.novidade) { vibrar(200); toast("🚨 Novidade no caso!"); som("novidade"); }
+        else { som("alfinete"); if (ui.aba !== "quadro") toast("📌 " + q.autor + " publicou uma pista"); }
       });
+      // alguém carimbou "Eu também vi"
+      var confAntes = {};
+      antes.quadro.forEach(function (q) { confAntes[q.id] = q.confirmados.length; });
+      if (v.quadro.some(function (q) { return confAntes[q.id] != null && q.confirmados.length > confAntes[q.id]; })) som("carimbo");
     }
     if (antes && antes.chat && ui.aba !== "chat" && v.fase !== "lobby") {
       var ult = v.chat[v.chat.length - 1], ultAntes = antes.chat[antes.chat.length - 1];
-      if (ult && (!ultAntes || ult.id !== ultAntes.id) && !ult.sistema && ult.autorId !== v.meuId) toast("💬 " + ult.autor + ": " + ult.texto.slice(0, 40));
+      if (ult && (!ultAntes || ult.id !== ultAntes.id) && !ult.sistema && ult.autorId !== v.meuId) { toast("💬 " + ult.autor + ": " + ult.texto.slice(0, 40)); som("sino"); }
     }
+    if (v.fase === "rodada" && antes && antes.rodada !== v.rodada && v.rodada > 1) som("papel");
     render();
+    climaMusical();
   }
 
   /* ================= Renderização ================= */
   function shell(nome, html) {
-    if (ui.shell !== nome) { $app.innerHTML = html; ui.shell = nome; return true; }
+    if (ui.shell !== nome) {
+      $app.innerHTML = html; ui.shell = nome;
+      var t = $app.firstElementChild;
+      if (t) { t.classList.add("entrar"); setTimeout(function () { t.classList.remove("entrar"); }, 450); }
+      return true;
+    }
     return false;
   }
   function campoFocado(el) {
@@ -343,25 +440,28 @@
 
   /* ---------------- Início ---------------- */
   function renderInicio() {
-    var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null);
+    var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null), solo = LS.get("ca_solo", null);
     var seisH = 6 * 3600 * 1000, agora = Date.now();
     var retomar = "";
     if (host && host.estado && agora - host.ts < seisH) {
       retomar = '<div class="retomar"><div style="font-weight:700">Você estava com uma sala aberta</div><div class="mudo pequeno" style="margin:2px 0 10px">Sala <b class="maquina">' + esc(host.codigo) + "</b> como anfitrião</div>" +
         '<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarHost">Reabrir sala</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
+    } else if (solo && solo.estado && solo.estado.fase !== "lobby" && solo.estado.fase !== "resultado") {
+      retomar = '<div class="retomar"><div style="font-weight:700">Continuar seu caso solo?</div><div class="mudo pequeno" style="margin:2px 0 10px">Você e os detetives robôs pararam no meio da investigação.</div>' +
+        '<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarSolo">Continuar</button><button class="btn fantasma pequeno" data-a="esquecerSolo">Descartar</button></div></div>';
     } else if (cli && agora - cli.ts < seisH) {
       retomar = '<div class="retomar"><div style="font-weight:700">Voltar para a partida?</div><div class="mudo pequeno" style="margin:2px 0 10px">Sala <b class="maquina">' + esc(cli.codigo) + "</b></div>" +
         '<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarCliente">Voltar</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
     }
     var ok = shell("inicio",
       '<div class="tela"><div class="rolagem"><div class="conteudo">' +
-      '<div class="logo"><span class="lupa">🔍</span><h1 class="titulo">CASO<span>.</span>ABERTO</h1><div class="slogan">um de vocês está mentindo</div></div>' +
+      '<div class="logo"><span class="lupa">🔍</span><h1 class="titulo">CASO<span>.</span>ABERTO</h1><div><span class="slogan digita">um de vocês está mentindo</span></div></div>' +
       '<div id="retomar"></div>' +
       '<label class="campo"><span>Seu nome de detetive</span><input id="nome" class="entrada" maxlength="18" autocomplete="off" placeholder="Ex.: Ruan"></label>' +
-      '<div class="pilha"><button class="btn prim" data-a="criar">🕵️ Criar sala</button></div>' +
+      '<div class="pilha"><button class="btn prim" data-a="criar">🕵️ Criar sala</button><button class="btn fantasma" data-a="solo">🕯️ Jogar sozinho <span class="mudo pequeno">(sem internet)</span></button></div>' +
       '<div class="ou">ou entre com um código</div>' +
       '<div class="linha-flex" style="align-items:stretch"><input id="codigo" class="entrada codigo" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="····" style="flex:1.4"><button class="btn latao" data-a="entrar" style="width:auto">Entrar</button></div>' +
-      '<div class="centro" style="margin-top:22px"><button class="link" data-a="regras">📖 Como jogar</button></div>' +
+      '<div class="centro" style="margin-top:22px"><button class="link" data-a="regras">📖 Como jogar</button> · <button class="link" data-a="config">🎵 Som e efeitos</button></div>' +
       "</div></div></div>");
     if (ok) {
       var n = document.getElementById("nome");
@@ -452,7 +552,8 @@
     }
     return '<div class="carta-papel detetive"><div class="grande">' + e.icone + '</div><div class="papel-nome">' + esc(e.nome) + "</div>" +
       '<div class="pequeno" style="opacity:.9">' + esc(e.desc) + " Esse dossiê já está no seu caderno.</div>" +
-      (V.treino ? '<div class="pequeno" style="margin-top:12px;opacity:.85">Modo treino: ninguém está mentindo. Trabalhem juntos!</div>'
+      (V.solo ? '<div class="pequeno" style="margin-top:12px;opacity:.85">🤖 Seus colegas são detetives robôs, e <b>um deles é o Cúmplice</b>: ele vai plantar pistas falsas no quadro. Use <b>Eu também vi</b>, leia a Conversa e descubra quem está mentindo.</div>'
+        : V.treino ? '<div class="pequeno" style="margin-top:12px;opacity:.85">Modo treino: ninguém está mentindo. Trabalhem juntos!</div>'
         : '<div class="pequeno" style="margin-top:12px;opacity:.85">⚠️ Um dos seus colegas é o <b>Cúmplice</b>: conhece a verdade e pode plantar pistas falsas. Desconfie de pistas que ninguém mais consegue confirmar.</div>') + "</div>";
   }
 
@@ -465,6 +566,8 @@
     h += '<h2 class="secao">Suspeitos</h2>' + listaSuspeitos(false);
     h += '<h2 class="secao">Seu papel</h2>';
     if (!ui.cartaRevelada) h += '<button class="carta-papel oculta" data-a="revelar" style="width:100%"><div class="grande">🂠</div><div class="papel-nome">Toque para ver</div><div class="pequeno mudo">Não deixe ninguém olhar sua tela!</div></button>';
+    else if (ui.animarCarta) h += '<div class="flip"><div class="flip-in"><div class="carta-papel oculta frente"><div class="grande">🂠</div><div class="papel-nome">&nbsp;</div></div><div class="verso">' +
+      textoPapel().replace('class="carta-papel ', 'class="carta-papel brilha ') + "</div></div></div>";
     else h += textoPapel();
     h += '<h2 class="secao">Prontos</h2><div class="cartao">' + V.jogadores.map(function (j) {
       return '<div class="jogador">' + avatar(j) + '<div class="nome">' + esc(j.nome) + '</div><div class="pequeno">' + (j.pronto ? "✅ pronto" : '<span class="mudo">lendo…</span>') + "</div></div>";
@@ -509,11 +612,12 @@
     // topo
     var t = '<div class="info"><div class="caso-nome">' + V.caso.capa + " " + esc(V.caso.titulo) + '</div><div class="meta">';
     if (V.fase === "rodada") t += "<span>Rodada <b>" + V.rodada + "/" + V.totalRodadas + "</b></span>" + '<span class="relogio" id="relogio"></span>';
+    else if (V.solo) t += "<span><b>⚖️ Acusação final</b></span>";
     else t += "<span><b>⚖️ Acusação</b></span><span>" + V.jogadores.filter(function (j) { return j.votou; }).length + "/" + V.jogadores.length + " votaram</span>";
     t += "</div></div>";
     if (V.souHost) {
       var rot = V.fase === "votacao" ? "Encerrar" : (V.rodada < V.totalRodadas ? "Rodada " + (V.rodada + 1) + " ▶" : "Acusar ▶");
-      t += '<button class="btn latao pequeno" data-a="avancarJogo">' + rot + "</button>";
+      if (!(V.solo && V.fase === "votacao")) t += '<button class="btn latao pequeno" data-a="avancarJogo">' + rot + "</button>";
     }
     t += '<button class="x" data-a="menu" aria-label="Menu">⋮</button>';
     pinta("topo", t);
@@ -575,9 +679,12 @@
     return h;
   }
 
-  function cartaoPista(q) {
-    var cls = "papel" + (q.novidade ? " novidade" : "") + (q.minhaFalsa ? " minha-falsa" : "");
-    var r = '<div class="' + cls + '"><span class="alfinete"></span><div class="origem">' + esc(q.origem) + '</div><div class="texto">' + esc(q.texto) + '</div><div class="rodape"><span class="esp">' +
+  function cartaoPista(q, i) {
+    var chegando = !ui.animQ[q.id];
+    var cls = "papel" + (q.novidade ? " novidade" : "") + (q.minhaFalsa ? " minha-falsa" : "") + (chegando ? " chegando" : "");
+    var r = '<div class="' + cls + '"' + (chegando ? ' style="animation-delay:' + Math.min(i || 0, 6) * 90 + 'ms"' : "") + ">";
+    if (q.confirmados.length) r += '<div class="selo-conf' + (ui.animC[q.id] ? "" : " carimbar") + '"' + (ui.animC[q.id] ? "" : ' style="animation-delay:' + (chegando ? 700 + Math.min(i || 0, 6) * 90 : 0) + 'ms"') + ">CONFIRMADA</div>";
+    r += '<span class="alfinete"></span><div class="origem">' + esc(q.origem) + '</div><div class="texto">' + esc(q.texto) + '</div><div class="rodape"><span class="esp">' +
       (q.novidade ? "📢 Delegacia · rodada " + q.rodada : "por <b>" + esc(q.autor) + "</b> · rodada " + q.rodada) + "</span>";
     if (q.podeConfirmar) r += '<button class="btn pequeno" data-a="confirmar" data-id="' + q.id + '">👁️ Eu também vi</button>';
     r += "</div>";
@@ -589,7 +696,10 @@
   function abaQuadro() {
     var h = '<div class="mudo pequeno" style="margin-bottom:12px">Pistas que o grupo compartilhou. Se você encontrou a mesma pista, toque em <b>Eu também vi</b>: o jogo confere no seu caderno, então pista confirmada é pista verdadeira.</div>';
     if (!V.quadro.length) return h + '<div class="quadro-mural"><div class="vazio">O quadro está vazio.<br>Publique suas descobertas pelo Caderno.</div></div>';
-    return h + '<div class="quadro-mural">' + V.quadro.slice().reverse().map(cartaoPista).join("") + "</div>";
+    var html = V.quadro.slice().reverse().map(cartaoPista).join("");
+    marcarDepois(ui.animQ, V.quadro.filter(function (q) { return !ui.animQ[q.id]; }).map(function (q) { return q.id; }));
+    marcarDepois(ui.animC, V.quadro.filter(function (q) { return q.confirmados.length && !ui.animC[q.id]; }).map(function (q) { return q.id; }));
+    return h + '<div class="quadro-mural">' + html + "</div>";
   }
 
   function abaCaderno() {
@@ -678,16 +788,17 @@
       });
       return r + "</div>";
     }
-    var h = '<div class="mudo pequeno">Cada um vota em segredo. Vale a acusação mais votada: se houver empate, o caso fica sem solução. Combinem antes!</div>';
+    var h = V.solo ? '<div class="mudo pequeno">No modo solo, a acusação é só sua. Escolha o culpado, como, por quê e qual robô é o Cúmplice. Ao confirmar, o caso se encerra.</div>'
+      : '<div class="mudo pequeno">Cada um vota em segredo. Vale a acusação mais votada: se houver empate, o caso fica sem solução. Combinem antes!</div>';
     if (V.meuVoto) h += '<div class="cartao pequeno" style="margin-top:10px;border-color:var(--verde)">✅ Seu voto foi registrado. Você pode mudar até todos votarem.</div>';
     h += grupo("Quem é o culpado?", "culpado", c.suspeitos, function (s) { return "<b>" + esc(s.nome) + '</b> <span class="mudo pequeno">· ' + esc(s.ocupacao) + "</span>"; });
     h += grupo("Como foi feito?", "metodo", c.metodos, function (m) { return esc(m.nome); });
     h += grupo("Por quê?", "motivo", c.motivos, function (m) { return esc(m.nome); });
-    if (!V.treino) h += grupo("Quem é o Cúmplice?", "cumplice", V.jogadores.filter(function (j) { return j.id !== V.meuId; }), function (j) { return esc(j.nome); });
+    if (!V.treino) h += grupo("Quem é o Cúmplice?", "cumplice", V.jogadores.filter(function (j) { return j.id !== V.meuId; }), function (j) { return (j.robo ? "🤖 " : "") + esc(j.nome); });
     var completo = v.culpado && v.metodo && v.motivo && (V.treino || v.cumplice);
     h += '<div style="margin-top:18px"><button class="btn prim" data-a="votar"' + (completo ? "" : " disabled") + ">" + (V.meuVoto ? "Atualizar meu voto" : "⚖️ Confirmar acusação") + "</button></div>";
-    var falta = V.jogadores.filter(function (j) { return !j.votou; }).map(function (j) { return j.nome; });
-    if (falta.length) h += '<div class="mudo pequeno centro" style="margin-top:10px">Faltam votar: ' + esc(falta.join(", ")) + "</div>";
+    var falta = V.jogadores.filter(function (j) { return !j.votou && !j.robo; }).map(function (j) { return j.nome; });
+    if (falta.length && !V.solo) h += '<div class="mudo pequeno centro" style="margin-top:10px">Faltam votar: ' + esc(falta.join(", ")) + "</div>";
     return h;
   }
 
@@ -700,14 +811,7 @@
     function nomeMet(id) { var s = c.metodos.filter(function (x) { return x.id === id; })[0]; return s ? s.nome : "—"; }
     function nomeMot(id) { var s = c.motivos.filter(function (x) { return x.id === id; })[0]; return s ? s.nome : "—"; }
     function nomeJog(id) { var s = V.jogadores.filter(function (x) { return x.id === id; })[0]; return s ? s.nome : "—"; }
-    var D = {
-      total: ["verde", "Caso resolvido", "Os detetives acertaram o culpado e desmascararam o Cúmplice!"],
-      parcial: ["verde", "Caso resolvido", "Acertaram o culpado, mas o Cúmplice escapou sem ser descoberto."],
-      empate: ["latao", "Empate", "O Cúmplice foi preso, mas o verdadeiro culpado escapou."],
-      cumplice: ["vermelho", "Caso arquivado", "O Cúmplice venceu! O culpado ficou impune."],
-      resolvido: ["verde", "Caso resolvido", "Bom trabalho, detetives!"],
-      fracasso: ["vermelho", "Caso arquivado", "O culpado escapou desta vez."]
-    }[r.desfecho];
+    var D = infoDesfecho(r.desfecho);
     var cumplice = r.papeis.filter(function (p) { return p.tipo === "cumplice"; })[0];
     var h = '<div class="conteudo"><div class="revela"><div class="carimbo ' + D[0] + '">' + D[1] + '</div><div style="font-size:16px;margin-bottom:6px">' + D[2] + "</div>";
     h += '<div class="mudo pequeno">' + (r.acusado ? "O grupo acusou <b>" + esc(nomeSus(r.acusado)) + "</b>." : "Os votos empataram: ninguém foi acusado.") + "</div></div>";
@@ -741,7 +845,7 @@
     h += '<div class="pequeno mudo" style="margin-top:8px">Detetives: +3 culpado, +1 como, +1 por quê, +2 Cúmplice certo, +1 por pista sua confirmada por alguém. Cúmplice: +5 se o culpado escapar, +3 se não for descoberto.</div></div>';
     h += '<div class="centro" style="margin-top:14px"><button class="link" data-a="sair">Sair da sala</button></div></div>';
     pinta("corpo", h);
-    pinta("base", '<div class="conteudo">' + (V.souHost ? '<button class="btn prim" data-a="novaPartida">🔁 Jogar outro caso</button>' : '<div class="centro mudo" style="padding:8px">Aguardando o anfitrião começar outro caso…</div>') + "</div>");
+    pinta("base", '<div class="conteudo">' + (V.souHost ? '<button class="btn prim" data-a="novaPartida">🔁 ' + (V.solo ? "Próximo caso" : "Jogar outro caso") + "</button>" : '<div class="centro mudo" style="padding:8px">Aguardando o anfitrião começar outro caso…</div>') + "</div>");
   }
 
   /* ================= Ações da interface ================= */
@@ -778,10 +882,26 @@
         "<p><b>4. Quadro.</b> Publique no quadro o que quiser mostrar. Se você achou a mesma pista que outra pessoa, toque em <b>Eu também vi</b>: o jogo confere, então pista confirmada é pista verdadeira.</p>" +
         "<p><b>5. O Cúmplice</b> também investiga, mas pode plantar até 2 pistas falsas, que aparecem no quadro como se fossem reais. Pista que ninguém consegue confirmar merece desconfiança.</p>" +
         "<p><b>6. Acusação.</b> No fim, cada um vota: quem é o culpado, como foi feito, por quê e quem é o Cúmplice. Vale a acusação mais votada.</p>" +
+        "<p><b>Sozinho:</b> no botão <b>Jogar sozinho</b>, você investiga com 3 detetives robôs, sem internet. Um deles é o Cúmplice: desconfie de pista que ninguém confirma e preste atenção quando um robô diz que não viu nada no lugar.</p>" +
         "<p><b>Dica:</b> joguem numa chamada de voz ou vídeo no WhatsApp. Discutir é metade da graça!</p></div>" +
         '<button class="btn prim" data-a="fechar">Entendi</button>');
     },
     fechar: fecharModal,
+    config: function () {
+      var sp = window.Som ? Som.pref() : { musica: false, efeitos: false }, ap = window.Anim ? Anim.pref() : { clima: false };
+      function linha(k, t, d, on) { return '<div class="ajuste"><div class="t">' + t + "<small>" + d + '</small></div><button class="chave' + (on ? " on" : "") + '" data-a="alternar" data-k="' + k + '" aria-label="' + t + '"></button></div>'; }
+      abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">Som e efeitos</h2><div class="cartao" style="padding:4px 14px">' +
+        linha("musica", "🎵 Música de suspense", "Trilha e chuva de fundo, criadas pelo app", sp.musica) +
+        linha("efeitos", "🔔 Efeitos sonoros", "Papel, carimbo, máquina de escrever, veredito", sp.efeitos) +
+        linha("clima", "🌧️ Chuva e lampião na tela", "Desligue se o celular ficar lento", ap.clima) +
+        '</div><button class="btn prim" data-a="fechar" style="margin-top:14px">Pronto</button>');
+    },
+    alternar: function (el) {
+      var k = el.dataset.k, on = !el.classList.contains("on");
+      el.classList.toggle("on", on);
+      if (k === "clima") { if (window.Anim) Anim.definir("clima", on); }
+      else if (window.Som) { Som.definir(k, on); if (on && k === "efeitos") som("carimbo"); }
+    },
     convidar: function () {
       compartilhar("🔍 Bora jogar CASO ABERTO! Abra o app, toque em \"Entrar\" e use o código da sala: " + V.codigo);
     },
@@ -795,7 +915,12 @@
     treino: function (el) { enviarAcao({ tipo: "config", treino: el.dataset.v === "1" }); },
     tempo: function (el) { enviarAcao({ tipo: "config", tempoRodada: parseInt(el.dataset.v, 10) }); },
     iniciar: function () { enviarAcao({ tipo: "iniciar" }); },
-    revelar: function () { ui.cartaRevelada = true; vibrar(40); render(); },
+    revelar: function () {
+      ui.cartaRevelada = true; ui.animarCarta = true; vibrar(40);
+      som(V.papel && V.papel.tipo === "cumplice" ? "revelarCumplice" : "revelarDetetive");
+      render();
+      setTimeout(function () { ui.animarCarta = false; }, 1300);
+    },
     pronto: function () { enviarAcao({ tipo: "pronto" }); },
     avancar: function () { enviarAcao({ tipo: "avancar" }); },
     avancarJogo: function () {
@@ -807,28 +932,30 @@
           '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Esperar</button><button class="btn prim" data-a="encerrarOk">Encerrar</button></div>');
         return;
       }
-      falta = V.jogadores.filter(function (j) { return j.acoes > 0 && j.online; }).map(function (j) { return j.nome; });
+      falta = V.jogadores.filter(function (j) { return j.acoes > 0 && j.online && !j.robo; }).map(function (j) { return j.nome; });
       var prox = V.rodada < V.totalRodadas ? "começar a rodada " + (V.rodada + 1) : "ir para a acusação final";
       abrirModal("<p>Quer " + prox + "?</p>" + (falta.length ? '<p class="mudo pequeno">Ainda têm ações sobrando: ' + esc(falta.join(", ")) + ". Elas serão perdidas.</p>" : '<p class="mudo pequeno">Todos já agiram. Conversaram o suficiente?</p>') +
         '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Ainda não</button><button class="btn prim" data-a="avancarOk">Avançar</button></div>');
     },
-    avancarOk: function () { fecharModal(); enviarAcao({ tipo: "avancar" }); },
+    avancarOk: function () { fecharModal(); soloAdiantarRobos(); enviarAcao({ tipo: "avancar" }); },
     encerrarOk: function () { fecharModal(); enviarAcao({ tipo: "encerrarVotacao" }); },
     menu: function () {
-      abrirModal('<div class="pilha"><button class="btn" data-a="regras">📖 Como jogar</button><button class="btn" data-a="convidarJogo">📨 Ver código da sala (' + esc(V.codigo) + ')</button><button class="btn fantasma" data-a="sair">🚪 Sair da sala</button><button class="btn fantasma" data-a="fechar">Voltar</button></div>');
+      abrirModal('<div class="pilha"><button class="btn" data-a="regras">📖 Como jogar</button><button class="btn" data-a="config">🎵 Som e efeitos</button>' +
+        (V.solo ? "" : '<button class="btn" data-a="convidarJogo">📨 Ver código da sala (' + esc(V.codigo) + ')</button>') +
+        '<button class="btn fantasma" data-a="sair">🚪 ' + (V.solo ? "Sair do caso" : "Sair da sala") + '</button><button class="btn fantasma" data-a="fechar">Voltar</button></div>');
     },
     convidarJogo: function () { fecharModal(); toast("Código da sala: " + V.codigo); },
     sair: function () {
-      abrirModal("<p>" + (modo === "host" ? "Você é o anfitrião. Se sair, <b>a sala fecha para todos</b>." : "Sair da sala?") + "</p>" +
+      abrirModal("<p>" + (H && H.solo ? "Sair do caso? A investigação será descartada." : modo === "host" ? "Você é o anfitrião. Se sair, <b>a sala fecha para todos</b>." : "Sair da sala?") + "</p>" +
         '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Ficar</button><button class="btn prim" data-a="sairOk">Sair</button></div>');
     },
     sairOk: function () { sairDaSala(); },
     aba: function (el) { ui.aba = el.dataset.id; var c = document.getElementById("corpo"); if (c) { c._h = null; c.scrollTop = 0; } render(); },
     examinar: function (el) { investigar("local", el.dataset.id); },
     interrogar: function (el) { investigar("suspeito", el.dataset.id); },
-    publicar: function (el) { enviarAcao({ tipo: "publicar", pid: el.dataset.id }, function (r) { if (r && r.ok) toast("📌 Publicada no quadro"); }); },
+    publicar: function (el) { enviarAcao({ tipo: "publicar", pid: el.dataset.id }, function (r) { if (r && r.ok) { som("alfinete"); toast("📌 Publicada no quadro"); } }); },
     publicarModal: function (el) { fecharModal(); acoes.publicar(el); },
-    confirmar: function (el) { enviarAcao({ tipo: "confirmar", itemId: el.dataset.id }, function (r) { if (r && r.ok) { vibrar(30); toast("✔ Confirmada"); } }); },
+    confirmar: function (el) { enviarAcao({ tipo: "confirmar", itemId: el.dataset.id }, function (r) { if (r && r.ok) { vibrar(30); som("carimbo"); toast("✔ Confirmada"); } }); },
     segredo: function () { ui.segredo = !ui.segredo; render(); },
     escolherFalsa: function (el) { ui.falsa.idx = parseInt(el.dataset.i, 10); ui.falsa.origem = ""; render(); },
     plantar: function () {
@@ -838,7 +965,7 @@
       if (ui.falsa.idx === -1) { var ta = document.getElementById("falsaTexto"); texto = ta ? ta.value : ui.falsa.texto; }
       else texto = s.falsas[ui.falsa.idx].texto;
       enviarAcao({ tipo: "plantar", texto: texto, origem: ui.falsa.origem }, function (r) {
-        if (r && r.ok) { ui.falsa = { idx: null, texto: "", origem: "" }; toast("🩸 Pista falsa plantada"); render(); }
+        if (r && r.ok) { ui.falsa = { idx: null, texto: "", origem: "" }; som("alfinete"); toast("🩸 Pista falsa plantada"); render(); }
       });
     },
     enviarChat: function () {
@@ -852,10 +979,27 @@
     votar: function () {
       var v = ui.voto;
       enviarAcao({ tipo: "votar", culpado: v.culpado, metodo: v.metodo, motivo: v.motivo, cumplice: v.cumplice }, function (r) {
-        if (r && r.ok) { ui.voto._editando = false; vibrar(60); toast("⚖️ Voto registrado"); }
+        if (r && r.ok) { ui.voto._editando = false; vibrar(60); som("martelo"); toast("⚖️ Voto registrado"); }
       });
     },
-    novaPartida: function () { enviarAcao({ tipo: "novaPartida" }); }
+    novaPartida: function () {
+      if (H && H.solo) { H.motor.novaPartida(); var r = H.motor.iniciar(); if (!r.ok) toast(r.erro || "Erro", true); hostDifundir(); return; }
+      enviarAcao({ tipo: "novaPartida" });
+    },
+    solo: function () {
+      var n = document.getElementById("nome");
+      meuNome = ((n ? n.value : meuNome) || "").trim() || "Detetive";
+      LS.set("ca_nome", meuNome);
+      abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">Jogar sozinho</h2>' +
+        '<p class="mudo pequeno" style="margin-top:0">Você investiga com 3 detetives robôs. Um deles é o <b>Cúmplice</b> e vai tentar te enganar com pistas falsas. Funciona sem internet.</p><div class="casos">' +
+        CASOS.map(function (c) {
+          return '<button class="caso-opcao" data-a="soloCaso" data-id="' + c.id + '"><div class="capa">' + c.capa + '</div><div><div class="t">' + esc(c.titulo) +
+            '<span class="dif">' + esc(c.dificuldade) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
+        }).join("") + '</div><button class="btn fantasma" data-a="fechar" style="margin-top:12px">Voltar</button>');
+    },
+    soloCaso: function (el) { fecharModal(); iniciarSolo(el.dataset.id, null); },
+    retomarSolo: function () { var x = LS.get("ca_solo", null); if (x && x.estado) iniciarSolo(null, x.estado); },
+    esquecerSolo: function () { LS.del("ca_solo"); ui.shell = null; render(); }
   };
 
   function investigar(alvo, id) {
@@ -865,6 +1009,7 @@
     enviarAcao({ tipo: "investigar", alvo: alvo, id: id }, function (r) {
       if (!r || !r.ok || !r.nova) return;
       vibrar(50);
+      som("papel");
       var e = r.nova;
       abrirModal('<div class="mudo pequeno centro" style="margin-bottom:12px">' + (alvo === "local" ? "Você encontrou:" : "O suspeito disse:") + "</div>" +
         '<div class="papel"><span class="alfinete"></span><div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + "</div></div>" +

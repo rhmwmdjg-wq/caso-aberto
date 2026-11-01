@@ -31,7 +31,7 @@
       hostId: null,
       jogadores: {},
       ordem: [],
-      config: { casoId: this.casos[0].id, treino: false, tempoRodada: 0 },
+      config: { casoId: this.casos[0].id, treino: false, tempoRodada: 0, solo: false },
       partida: null,
       chat: [],
       seq: 1,
@@ -146,11 +146,118 @@
     return { ok: false, erro: "Ação inválida." };
   };
 
-  P.minimoJogadores = function () { return this.s.config.treino ? 1 : 3; };
+  P.minimoJogadores = function () { return (this.s.config.treino || this.s.config.solo) ? 1 : 3; };
+
+  /* ---------------- Robôs do modo solo ---------------- */
+  var NOMES_ROBOS = ["Inspetora Vilma", "Detetive Bento", "Agente Nogueira", "Perita Odete", "Sargento Lauro", "Doutora Ísis", "Cabo Tavares"];
+  P.ehRobo = function (id) { var j = this.s.jogadores[id]; return !!(j && j.robo); };
+  P.humanos = function () { var s = this.s, self = this; return s.ordem.filter(function (id) { return !self.ehRobo(id); }); };
+  P.criarRobos = function (n) {
+    var s = this.s, nomes = embaralhar(NOMES_ROBOS, this.rand);
+    for (var i = 0; i < n; i++) {
+      var id = this.novoId("j");
+      s.jogadores[id] = { id: id, nome: nomes[i], token: null, online: true, pontos: 0, pronto: true, robo: true };
+      s.ordem.push(id);
+    }
+  };
+  P.removerRobos = function () {
+    var s = this.s, self = this;
+    s.ordem.slice().forEach(function (id) { if (self.ehRobo(id)) delete s.jogadores[id]; });
+    s.ordem = s.ordem.filter(function (id) { return s.jogadores[id]; });
+  };
+  P.roboFala = function (id, texto) {
+    this.s.chat.push({ id: this.novoId("c"), autorId: id, autor: this.nome(id), texto: texto, ts: this.agora() });
+    if (this.s.chat.length > 150) this.s.chat.shift();
+  };
+  function sortear(lista, rand) { return lista[Math.floor(rand() * lista.length)]; }
+
+  // Uma ação de um robô: investiga, publica, confirma, comenta e (se for o Cúmplice) planta pistas falsas.
+  // Retorna true se fez alguma coisa.
+  P.agirRobo = function (id) {
+    var s = this.s, p = s.partida, self = this, rand = this.rand;
+    if (!p || s.fase !== "rodada" || !this.ehRobo(id) || (p.acoes[id] || 0) <= 0) return false;
+    var caso = this.caso(), vistos = p.vistos[id], cumplice = p.cumpliceId === id;
+    var opcoes = [];
+    caso.locais.forEach(function (l) { if ((vistos["l:" + l.id] || 0) < l.pistas.length) opcoes.push({ alvo: "local", id: l.id, peso: 3 }); });
+    caso.suspeitos.forEach(function (x) { if ((vistos["d:" + x.id] || 0) < caso.depoimentos[x.id].length) opcoes.push({ alvo: "suspeito", id: x.id, peso: 2 }); });
+    if (!opcoes.length) { p.acoes[id] = 0; return false; }
+    var tot = 0; opcoes.forEach(function (o) { tot += o.peso; });
+    var r = rand() * tot, esc = opcoes[0];
+    for (var i = 0; i < opcoes.length; i++) { r -= opcoes[i].peso; if (r <= 0) { esc = opcoes[i]; break; } }
+    var res = this.investigar(id, { alvo: esc.alvo, id: esc.id });
+    if (!res.ok) return false;
+    var achado = res.nova;
+
+    // O Cúmplice robô planta as pistas falsas (uma nas rodadas 1-2, outra na 3-4)
+    var plantou = p.plantadas[id] || 0;
+    var querPlantar = cumplice && plantou < MAX_PLANTADAS && caso.falsas && caso.falsas.length &&
+      ((plantou === 0 && (p.rodada >= 2 || rand() < 0.5)) || (plantou === 1 && p.rodada >= 3 && rand() < 0.7) || (plantou === 1 && p.rodada === p.totalRodadas));
+    if (querPlantar) {
+      var usadas = p.quadro.filter(function (q) { return q.falsa; }).map(function (q) { return q.texto; });
+      var livres = caso.falsas.filter(function (f) { return usadas.indexOf(f.texto) < 0; });
+      if (livres.length) {
+        var f = sortear(livres, rand);
+        var loc = caso.locais.filter(function (l) { return l.nome === f.origem; })[0];
+        this.plantar(id, f.texto, loc ? loc.icone + " " + loc.nome : f.origem);
+        this.roboFala(id, sortear(["Olhem o que eu achei. Isso muda tudo!", "Acabei de publicar uma pista importante no quadro.", "Achei uma coisa suspeita. Está no quadro.", "Gente, vejam o quadro. Acho que é isso!"], rand));
+        return true;
+      }
+    }
+
+    // Publica a pista verdadeira? Detetives publicam quase sempre; o Cúmplice esconde boa parte.
+    if (rand() < (cumplice ? 0.45 : 0.8)) {
+      var ok = this.publicar(id, achado.pid);
+      if (ok.ok && rand() < 0.55) {
+        this.roboFala(id, sortear([
+          "Publiquei o que encontrei: " + achado.origem + ".",
+          "Coloquei no quadro. Alguém viu o mesmo?",
+          "Isso aqui veio de " + achado.origem + ". Vale conferir.",
+          "Mais uma pista no quadro.",
+          "Olhem o que eu achei. Isso muda tudo!",
+          "Gente, vejam o quadro. Acho que é isso!"
+        ], rand));
+      }
+    }
+
+    // Confirma pistas do quadro que também estão no seu caderno
+    p.quadro.forEach(function (q) {
+      if (!q.novidade && q.pid && q.autorId !== id && q.confirmados.indexOf(id) < 0 && self.temPista(id, q.pid) && rand() < 0.85) q.confirmados.push(id);
+    });
+
+    // Detetive honesto desconfia de pista falsa de um lugar que ele examinou
+    if (!cumplice) {
+      p.quadro.forEach(function (q) {
+        if (!q.falsa || q.autorId === id) return;
+        p.duvidas = p.duvidas || {};
+        var chave = id + ">" + q.id;
+        if (p.duvidas[chave]) return;
+        var loc = caso.locais.filter(function (l) { return q.origem === l.icone + " " + l.nome; })[0];
+        if (loc && (vistos["l:" + loc.id] || 0) > 0 && rand() < 0.5) {
+          p.duvidas[chave] = true;
+          self.roboFala(id, sortear([
+            "Estranho… eu examinei " + loc.nome + " e não vi nada disso que " + q.autor + " publicou.",
+            "Não consigo confirmar a pista de " + q.autor + ". Eu estive em " + loc.nome + " e não achei isso.",
+            "Hum. " + q.autor + " diz que achou isso em " + loc.nome + ", mas eu passei lá e não vi."
+          ], rand));
+        }
+      });
+    }
+    return true;
+  };
+  P.robosPendentes = function () {
+    var s = this.s, p = s.partida, self = this;
+    if (!p || s.fase !== "rodada") return [];
+    return s.ordem.filter(function (id) { return self.ehRobo(id) && (p.acoes[id] || 0) > 0; });
+  };
 
   P.iniciar = function () {
     var s = this.s;
     if (s.fase !== "lobby") return { ok: false };
+    if (s.config.solo) {
+      this.removerRobos();
+      s.config.treino = false;
+      this.criarRobos(3);
+    }
     var ids = s.ordem.filter(function (i) { return s.jogadores[i].online; });
     if (ids.length < this.minimoJogadores())
       return { ok: false, erro: "São precisos pelo menos " + this.minimoJogadores() + " jogadores (com Cúmplice)." };
@@ -161,6 +268,13 @@
     var caso = this.caso(s.config.casoId);
     var mist = embaralhar(ids, this.rand);
     var espsMist = embaralhar(this.esps.map(function (e) { return e.id; }), this.rand);
+    var self0 = this;
+    if (s.config.solo) {
+      // no solo, o Cúmplice é sempre um dos robôs
+      var robos = mist.filter(function (i) { return self0.ehRobo(i); });
+      var escolhido = robos[Math.floor(this.rand() * robos.length)];
+      mist = [escolhido].concat(mist.filter(function (i) { return i !== escolhido; }));
+    }
     var cumplice = s.config.treino ? null : mist[0];
     var detetives = s.config.treino ? mist : mist.slice(1);
     var papeis = {}, cadernos = {};
@@ -180,10 +294,11 @@
         origem: "Dossiê · " + self.esp(e).nome,
         texto: caso.dossies[e]
       }];
-      s.jogadores[id].pronto = false;
+      s.jogadores[id].pronto = !!s.jogadores[id].robo;
     });
     s.partida = {
       casoId: caso.id,
+      solo: !!s.config.solo,
       treino: !!s.config.treino,
       cumpliceId: cumplice,
       papeis: papeis,
@@ -335,7 +450,7 @@
       if (s.ordem.indexOf(a.cumplice) < 0 || a.cumplice === jid) return { ok: false, erro: "Escolha quem é o Cúmplice." };
     }
     p.votos[jid] = { culpado: a.culpado, metodo: a.metodo, motivo: a.motivo, cumplice: p.treino ? null : a.cumplice };
-    var todos = s.ordem.every(function (id) { return p.votos[id]; });
+    var todos = this.humanos().every(function (id) { return p.votos[id]; });
     if (todos) this.resolver();
     return { ok: true };
   };
@@ -410,6 +525,7 @@
     s.partida = null;
     s.fase = "lobby";
     var self = this;
+    if (s.config.solo) this.removerRobos();
     s.ordem.slice().forEach(function (id) {
       var j = s.jogadores[id];
       j.pronto = false;
@@ -438,7 +554,7 @@
       jogadores: s.ordem.map(function (id) {
         var j = s.jogadores[id];
         return {
-          id: id, nome: j.nome, online: j.online, pontos: j.pontos, pronto: j.pronto,
+          id: id, nome: j.nome, online: j.online, pontos: j.pontos, pronto: j.pronto, robo: !!j.robo,
           acoes: p ? (p.acoes[id] || 0) : 0,
           votou: !!(p && p.votos[id])
         };
@@ -459,6 +575,7 @@
       locais: caso.locais.map(function (l) { return { id: l.id, nome: l.nome, icone: l.icone, total: l.pistas.length }; })
     };
     v.treino = p.treino;
+    v.solo = !!p.solo;
     v.rodada = p.rodada;
     v.totalRodadas = p.totalRodadas;
     v.acoesPorRodada = p.acoesPorRodada;
