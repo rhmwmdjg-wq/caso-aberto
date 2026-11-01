@@ -31,7 +31,7 @@
       hostId: null,
       jogadores: {},
       ordem: [],
-      config: { casoId: this.casos[0].id, treino: false, tempoRodada: 0, solo: false },
+      config: { casoId: this.casos[0].id, nivel: this.casos[0].dificuldade, treino: false, tempoRodada: 0, solo: false },
       partida: null,
       chat: [],
       seq: 1,
@@ -40,6 +40,7 @@
   }
 
   Motor.MAX_JOGADORES = MAX_JOGADORES;
+  Motor.NIVEIS = ["Fácil", "Médio", "Difícil"];
   Motor.TOTAL_RODADAS = TOTAL_RODADAS;
 
   var P = Motor.prototype;
@@ -48,6 +49,15 @@
     id = id || (this.s.partida ? this.s.partida.casoId : this.s.config.casoId);
     for (var i = 0; i < this.casos.length; i++) if (this.casos[i].id === id) return this.casos[i];
     return this.casos[0];
+  };
+  P.casosDoNivel = function (nivel) { return this.casos.filter(function (c) { return c.dificuldade === nivel; }); };
+  P.definirNivel = function (nivel) {
+    if (Motor.NIVEIS.indexOf(nivel) < 0) return false;
+    var lista = this.casosDoNivel(nivel);
+    if (!lista.length) return false;
+    this.s.config.nivel = nivel;
+    if (this.caso(this.s.config.casoId).dificuldade !== nivel) this.s.config.casoId = lista[0].id;
+    return true;
   };
   P.esp = function (id) {
     for (var i = 0; i < this.esps.length; i++) if (this.esps[i].id === id) return this.esps[i];
@@ -114,7 +124,8 @@
       }
       case "config": {
         if (!ehHost || s.fase !== "lobby") return { ok: false, erro: "Só o anfitrião muda as regras." };
-        if (a.casoId && this.caso(a.casoId).id === a.casoId) s.config.casoId = a.casoId;
+        if (typeof a.nivel === "string") this.definirNivel(a.nivel);
+        if (a.casoId && this.caso(a.casoId).id === a.casoId) { s.config.casoId = a.casoId; s.config.nivel = this.caso(a.casoId).dificuldade; }
         if (typeof a.treino === "boolean") s.config.treino = a.treino;
         if (typeof a.tempoRodada === "number") s.config.tempoRodada = Math.max(0, Math.min(900, a.tempoRodada | 0));
         return { ok: true };
@@ -531,10 +542,13 @@
       j.pronto = false;
       if (!j.online) self.desconectar(id);
     });
-    // sugere o próximo caso
+    // sugere o próximo caso do mesmo nível
+    var nivel = s.config.nivel || this.caso(s.config.casoId).dificuldade;
+    var lista = this.casosDoNivel(nivel);
+    if (!lista.length) lista = this.casos;
     var idx = 0;
-    for (var i = 0; i < this.casos.length; i++) if (this.casos[i].id === s.config.casoId) idx = i;
-    s.config.casoId = this.casos[(idx + 1) % this.casos.length].id;
+    for (var i = 0; i < lista.length; i++) if (lista[i].id === s.config.casoId) idx = i;
+    s.config.casoId = lista[(idx + 1) % lista.length].id;
     this.sistema("Nova partida! O anfitrião está escolhendo o próximo caso.");
     return { ok: true };
   };

@@ -56,6 +56,13 @@
       fracasso: ["vermelho", "Caso arquivado", "O culpado escapou desta vez."]
     }[d];
   }
+  var NIVEIS = [
+    ["Fácil", "🟢", "Pistas diretas. Ótimo para começar."],
+    ["Médio", "🟡", "É preciso cruzar as pistas para ver a verdade."],
+    ["Difícil", "🔴", "Álibis falsos, horários enganosos e pistas que mentem."]
+  ];
+  function casosDoNivel(lista, nivel) { return lista.filter(function (c) { return c.dificuldade === nivel; }); }
+  function nivelAtual() { return (V && V.config.nivel) || (V && V.casos.filter(function (c) { return c.id === V.config.casoId; })[0] || {}).dificuldade || "Fácil"; }
   function climaMusical() {
     if (!window.Som) return;
     if (!V) Som.clima("calmo");
@@ -113,6 +120,7 @@
     motor.s.codigo = codigo;
     var meu = motor.entrar(token, meuNome, true);
     motor.s.hostId = meu.id;
+    if (!estadoSalvo && ui.nivelInicial) motor.definirNivel(ui.nivelInicial);
     // ao retomar, todos começam offline até reconectarem
     if (estadoSalvo) motor.s.ordem.forEach(function (id) { if (id !== meu.id) motor.s.jogadores[id].online = false; });
 
@@ -501,10 +509,18 @@
     if (V.jogadores.length < V.minimo) h += '<div class="mudo pequeno" style="padding-top:10px">Esperando mais jogadores… (mínimo ' + V.minimo + ")</div>";
     h += "</div>";
 
-    h += '<h2 class="secao">Caso</h2><div class="casos">';
+    var nivel = nivelAtual();
+    if (V.souHost) {
+      h += '<h2 class="secao">Nível do jogo</h2><div class="segmento niveis">' + NIVEIS.map(function (n) {
+        return '<button data-a="nivel" data-v="' + n[0] + '" class="' + (n[0] === nivel ? "sel" : "") + '">' + n[1] + " " + n[0] + "</button>";
+      }).join("") + "</div>";
+      h += '<div class="mudo pequeno" style="margin-top:6px">' + esc(NIVEIS.filter(function (n) { return n[0] === nivel; })[0][2]) + "</div>";
+    }
+    h += '<h2 class="secao">Caso' + (V.souHost ? " · " + esc(nivel) : "") + '</h2><div class="casos">';
     V.casos.forEach(function (c) {
       var sel = c.id === V.config.casoId;
       if (!V.souHost && !sel) return;
+      if (V.souHost && c.dificuldade !== nivel) return;
       h += '<button class="caso-opcao' + (sel ? " sel" : "") + '" data-a="caso" data-id="' + c.id + '"' + (V.souHost ? "" : " disabled") + '><div class="capa">' + c.capa +
         '</div><div><div class="t">' + esc(c.titulo) + '<span class="dif">' + esc(c.dificuldade) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
     });
@@ -852,8 +868,19 @@
   var acoes = {
     criar: function () {
       if (precisaNome()) return;
+      abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">Escolha o nível</h2>' +
+        '<p class="mudo pequeno" style="margin-top:0">Na sala, só vão aparecer os casos deste nível. Dá para trocar depois, antes de abrir o caso.</p><div class="pilha">' +
+        NIVEIS.map(function (n) {
+          var qtd = casosDoNivel(CASOS, n[0]).length;
+          return '<button class="nivel-opcao" data-a="criarNivel" data-v="' + n[0] + '"><span class="ic">' + n[1] + '</span><span><b>' + n[0] + '</b> <span class="mudo pequeno">· ' + qtd + " casos</span><br><span class=\"mudo pequeno\">" + n[2] + "</span></span></button>";
+        }).join("") + '</div><button class="btn fantasma" data-a="fechar" style="margin-top:12px">Voltar</button>');
+    },
+    criarNivel: function (el) {
+      ui.nivelInicial = el.dataset.v;
+      fecharModal();
       iniciarHost(gerarCodigo(), null);
     },
+    nivel: function (el) { if (V && V.souHost) enviarAcao({ tipo: "config", nivel: el.dataset.v }); },
     entrar: function () {
       if (precisaNome()) return;
       var cod = (document.getElementById("codigo").value || "").toUpperCase();
@@ -877,6 +904,7 @@
     regras: function () {
       abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:12px">Como jogar</h2><div class="regras">' +
         "<p><b>1. Sala.</b> Um jogador cria a sala e passa o código de 4 letras. Os amigos entram pelo próprio celular. De 3 a 7 jogadores (no modo treino, a partir de 1).</p>" +
+        "<p><b>Níveis.</b> Quem cria a sala escolhe o nível (Fácil, Médio ou Difícil) e só aparecem os casos daquele nível. São " + CASOS.length + " casos ao todo.</p>" +
         "<p><b>2. Papéis.</b> Cada um recebe uma especialidade (Perito, Investigador, Arquivista…) com um dossiê exclusivo. Um jogador, em segredo, é o <b>Cúmplice</b>: ele sabe a verdade e quer que o grupo erre.</p>" +
         "<p><b>3. Rodadas.</b> São 4 rodadas. Em cada uma você examina um local ou interroga um suspeito (2 ações por rodada se forem até 4 jogadores). O que você descobre vai para o seu <b>caderno</b>, que só você vê.</p>" +
         "<p><b>4. Quadro.</b> Publique no quadro o que quiser mostrar. Se você achou a mesma pista que outra pessoa, toque em <b>Eu também vi</b>: o jogo confere, então pista confirmada é pista verdadeira.</p>" +
@@ -986,15 +1014,21 @@
       if (H && H.solo) { H.motor.novaPartida(); var r = H.motor.iniciar(); if (!r.ok) toast(r.erro || "Erro", true); hostDifundir(); return; }
       enviarAcao({ tipo: "novaPartida" });
     },
-    solo: function () {
+    solo: function (el) {
       var n = document.getElementById("nome");
-      meuNome = ((n ? n.value : meuNome) || "").trim() || "Detetive";
+      if (n) meuNome = (n.value || "").trim() || meuNome;
+      meuNome = meuNome || "Detetive";
       LS.set("ca_nome", meuNome);
+      if (el && el.dataset && el.dataset.v) ui.soloNivel = el.dataset.v;
+      var nivel = ui.soloNivel || "Fácil";
       abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">Jogar sozinho</h2>' +
-        '<p class="mudo pequeno" style="margin-top:0">Você investiga com 3 detetives robôs. Um deles é o <b>Cúmplice</b> e vai tentar te enganar com pistas falsas. Funciona sem internet.</p><div class="casos">' +
-        CASOS.map(function (c) {
+        '<p class="mudo pequeno" style="margin-top:0">Você investiga com 3 detetives robôs. Um deles é o <b>Cúmplice</b> e vai tentar te enganar com pistas falsas. Funciona sem internet.</p>' +
+        '<div class="segmento niveis" style="margin-bottom:8px">' + NIVEIS.map(function (x) {
+          return '<button data-a="solo" data-v="' + x[0] + '" class="' + (x[0] === nivel ? "sel" : "") + '">' + x[1] + " " + x[0] + "</button>";
+        }).join("") + '</div><div class="mudo pequeno" style="margin-bottom:10px">' + esc(NIVEIS.filter(function (x) { return x[0] === nivel; })[0][2]) + '</div><div class="casos">' +
+        casosDoNivel(CASOS, nivel).map(function (c) {
           return '<button class="caso-opcao" data-a="soloCaso" data-id="' + c.id + '"><div class="capa">' + c.capa + '</div><div><div class="t">' + esc(c.titulo) +
-            '<span class="dif">' + esc(c.dificuldade) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
+            '</div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
         }).join("") + '</div><button class="btn fantasma" data-a="fechar" style="margin-top:12px">Voltar</button>');
     },
     soloCaso: function (el) { fecharModal(); iniciarSolo(el.dataset.id, null); },
