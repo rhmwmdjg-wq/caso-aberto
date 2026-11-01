@@ -7,6 +7,7 @@ Um dos jogadores é, em segredo, o **Cúmplice**: ele sabe a verdade e tenta eng
 - 3 casos: *O Último Brinde* (fácil), *O Malote da Quermesse* (médio) e *Noite de Temporal* (difícil)
 - Sala com código de 4 letras, quadro de pistas compartilhado, caderno secreto, conversa e votação final
 - **Jogar sozinho** (sem internet): você investiga com 3 detetives robôs, e um deles é o Cúmplice
+- **Casos gerados por IA** (Google Gemini): em Som e efeitos → Casos por IA, cole sua chave grátis do Google AI Studio. A chave fica só no celular, nunca no código.
 - Música de suspense e efeitos sonoros criados pelo próprio app, chuva e lampião na tela, abertura do caso e veredito animados (dá para desligar em **Som e efeitos**)
 
 ---
@@ -67,6 +68,8 @@ Dica: joguem numa chamada de voz do WhatsApp.
 | Conexão entre celulares | `app/src/main/assets/www/js/rede.js` |
 | Música e efeitos sonoros | `app/src/main/assets/www/js/som.js` |
 | Chuva, abertura e veredito | `app/src/main/assets/www/js/anim.js` |
+| Casos por IA (Gemini) | `app/src/main/assets/www/js/ia.js` |
+| Casos por nível | `app/src/main/assets/www/js/casos-faceis.js`, `casos-medios.js`, `casos-dificeis.js` |
 | App Android (WebView) | `app/src/main/java/br/casoaberto/jogo/MainActivity.java` |
 
 Para testar no computador sem celular: rode um servidor na pasta `www` e abra
