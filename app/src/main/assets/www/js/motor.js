@@ -9,6 +9,7 @@
   var MAX_JOGADORES = 7;
   var TOTAL_RODADAS = 4;
   var MAX_PLANTADAS = 2;
+  var MAX_FOTOS = 2;
 
   function embaralhar(arr, rand) {
     var a = arr.slice();
@@ -72,6 +73,7 @@
     nome = String(nome || "").trim().slice(0, 18) || "Detetive";
     for (var k in s.jogadores) {
       if (s.jogadores[k].token === token) {
+        if (!s.jogadores[k].online && s.fase !== "lobby") this.sistema(nome + " voltou para a sala.");
         s.jogadores[k].online = true;
         s.jogadores[k].nome = nome;
         return { ok: true, id: k };
@@ -92,8 +94,9 @@
 
   P.desconectar = function (id) {
     var j = this.s.jogadores[id];
-    if (!j) return;
+    if (!j || !j.online) return;
     j.online = false;
+    if (this.s.fase !== "lobby") this.sistema(j.nome + " perdeu a conexão. A partida continua; quando voltar, tudo estará como deixou.");
     if (this.s.fase === "lobby") {
       // No lobby, quem sai é removido de vez.
       delete this.s.jogadores[id];
@@ -154,6 +157,7 @@
       case "confirmar": return this.confirmar(jid, a.itemId);
       case "plantar": return this.plantar(jid, a.texto, a.origem);
       case "votar": return this.votar(jid, a);
+      case "fotografar": return this.fotografar(jid, a.itemId);
     }
     return { ok: false, erro: "Ação inválida." };
   };
@@ -405,6 +409,41 @@
     return { ok: true, nova: entrada };
   };
 
+  // Câmera do Fotógrafo: gasta 1 ação e confere se uma pista do quadro existe mesmo no local de onde diz ter vindo.
+  P.localDaOrigem = function (origem) {
+    var caso = this.caso(), achou = null;
+    caso.locais.forEach(function (l) { if (origem === l.icone + " " + l.nome || origem === l.nome) achou = l; });
+    return achou;
+  };
+  P.fotografar = function (jid, itemId) {
+    var s = this.s, p = s.partida;
+    if (!p || s.fase !== "rodada") return { ok: false, erro: "Só dá para fotografar durante as rodadas." };
+    var papel = p.papeis[jid];
+    if (!papel || papel.esp !== "fotografo") return { ok: false, erro: "Só o Fotógrafo tem a câmera." };
+    p.fotos = p.fotos || {};
+    if ((p.fotos[jid] || 0) >= MAX_FOTOS) return { ok: false, erro: "Acabou o filme: você já tirou as " + MAX_FOTOS + " fotos da partida." };
+    if ((p.acoes[jid] || 0) <= 0) return { ok: false, erro: "Fotografar gasta 1 ação, e você já usou as suas nesta rodada." };
+    var item = null;
+    p.quadro.forEach(function (q) { if (q.id === itemId) item = q; });
+    if (!item || item.novidade) return { ok: false, erro: "Escolha uma pista do quadro." };
+    if (item.autorId === jid) return { ok: false, erro: "Essa pista é sua." };
+    var local = this.localDaOrigem(item.origem);
+    if (!local) return { ok: false, erro: "Só dá para fotografar pistas que vieram de um local, não de depoimentos." };
+    var confere = !item.falsa;
+    var resumo = item.texto.length > 90 ? item.texto.slice(0, 87) + "…" : item.texto;
+    var entrada = {
+      pid: "foto:" + item.id, tipo: "foto", rodada: p.rodada, local: local.id, confere: confere,
+      origem: "📷 Sua foto · " + local.nome,
+      texto: confere
+        ? "A foto confirma a pista de " + item.autor + ": \"" + resumo + "\" Está mesmo em " + local.nome + "."
+        : "Fotografei " + local.nome + " inteiro e NÃO aparece nada do que " + item.autor + " publicou: \"" + resumo + "\" Essa pista pode ser falsa."
+    };
+    p.cadernos[jid].push(entrada);
+    p.fotos[jid] = (p.fotos[jid] || 0) + 1;
+    p.acoes[jid]--;
+    return { ok: true, nova: entrada };
+  };
+
   P.temPista = function (jid, pid) {
     var c = this.s.partida.cadernos[jid] || [];
     for (var i = 0; i < c.length; i++) if (c[i].pid === pid) return c[i];
@@ -608,6 +647,7 @@
       v.minhasAcoes = p.acoes[jid] || 0;
       v.vistos = p.vistos[jid];
       v.meuVoto = p.votos[jid] || null;
+      if (papel.esp === "fotografo") v.fotosRestantes = MAX_FOTOS - ((p.fotos && p.fotos[jid]) || 0);
       if (papel.tipo === "cumplice") {
         v.segredo = {
           culpado: caso.solucao.culpado, metodo: caso.solucao.metodo, motivo: caso.solucao.motivo,

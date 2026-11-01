@@ -76,8 +76,9 @@
     d.className = "toast" + (erro ? " erro" : "");
     d.textContent = txt;
     $toasts.appendChild(d);
-    setTimeout(function () { d.style.opacity = "0"; d.style.transition = "opacity .3s"; }, 2600);
-    setTimeout(function () { d.remove(); }, 3000);
+    var dur = Math.min(6500, Math.max(2600, String(txt).length * 55));
+    setTimeout(function () { d.style.opacity = "0"; d.style.transition = "opacity .3s"; }, dur);
+    setTimeout(function () { d.remove(); }, dur + 400);
   }
   function compartilhar(texto) {
     try {
@@ -134,6 +135,7 @@
       },
       conexao: function (cid) { H.visto[cid] = Date.now(); },
       mensagem: function (cid, m) { H.visto[cid] = Date.now(); hostMensagem(cid, m); },
+      sinal: function (ok) { if (!H) return; if (conectado !== ok) { conectado = ok; if (ok && V) toast("Sala no ar de novo!"); render(); } },
       fechou: function (cid) { hostFechou(cid); },
       erro: function (tipo) {
         if (tipo === "ocupado") {
@@ -171,6 +173,10 @@
     }
     var jid = H.conns[cid];
     if (!jid) return;
+    if (m.t === "foto") {
+      Fotos.obter(String(m.chave || "")).then(function (d) { if (H) H.rede.enviar(cid, { t: "foto", chave: m.chave, data: d || null }); });
+      return;
+    }
     if (m.t === "acao") {
       var res = hostProcessar(jid, m.a);
       if (m.rid) H.rede.enviar(cid, { t: "res", rid: m.rid, r: res });
@@ -202,8 +208,9 @@
 
   function hostDifundir() {
     if (!H) return;
-    for (var cid in H.conns) H.rede.enviar(cid, { t: "estado", v: H.motor.visao(H.conns[cid]) });
-    receberVisao(H.motor.visao(H.meuId));
+    function comFotos(v) { if (v.caso && window.Fotos) v.fotosIA = Fotos.temIA(v.caso.id); return v; }
+    for (var cid in H.conns) H.rede.enviar(cid, { t: "estado", v: comFotos(H.motor.visao(H.conns[cid])) });
+    receberVisao(comFotos(H.motor.visao(H.meuId)));
     var agora = Date.now(), chave = H.solo ? "ca_solo" : "ca_host";
     if (agora - H.salvarEm > 800) {
       H.salvarEm = agora;
@@ -266,9 +273,9 @@
   /* ================= CONVIDADO ================= */
   var C = null;
 
-  function conectarCliente(codigo, reconectando) {
+  function conectarCliente(codigo, reconectando, retomando) {
     modo = "cliente";
-    if (!C || C.codigo !== codigo) C = { codigo: codigo, rede: null, tentativas: 0, ultimo: Date.now(), pend: {}, rid: 1, entrou: false };
+    if (!C || C.codigo !== codigo) C = { codigo: codigo, rede: null, tentativas: 0, ultimo: Date.now(), pend: {}, rid: 1, entrou: false, retomando: !!retomando, desde: Date.now() };
     if (!reconectando) { ui.carregando = "Procurando a sala " + codigo + "…"; render(); }
     if (C.rede) C.rede.fechar();
     var esta = C;
@@ -283,12 +290,14 @@
         C.ultimo = Date.now();
         if (m.t === "ping") { C.rede.enviar({ t: "pong" }); return; }
         if (m.t === "estado") {
-          C.entrou = true; C.tentativas = 0;
+          C.entrou = true; C.tentativas = 0; C.perdeuEm = 0; C.retomando = false;
           if (!conectado) toast("Conectado de novo!");
           conectado = true;
           LS.set("ca_cliente", { codigo: codigo, ts: Date.now() });
           LS.del("ca_host");
           receberVisao(m.v);
+        } else if (m.t === "foto") {
+          Fotos.receber(m.chave, m.data);
         } else if (m.t === "res") {
           var cb = C.pend[m.rid]; delete C.pend[m.rid];
           if (cb) cb(m.r);
@@ -301,7 +310,7 @@
       fechou: function () { if (C === esta) clientePerdeu(); },
       erro: function (tipo) {
         if (C !== esta) return;
-        if (!C.entrou) {
+        if (!C.entrou && !C.retomando) {
           if (tipo === "sala") sairParaInicio("Sala " + codigo + " não encontrada. Confira o código (o anfitrião precisa estar com o app aberto).");
           else if (tipo === "tempo") sairParaInicio("Não deu para conectar à sala " + codigo + ". Tentem os dois no Wi-Fi ou confiram a internet.");
           else sairParaInicio("Sem conexão com a internet.");
@@ -315,10 +324,15 @@
     conectado = false;
     render();
     C.tentativas++;
-    if (C.tentativas > 40) { sairParaInicio("A conexão com a sala caiu. O anfitrião pode ter fechado o jogo."); return; }
+    if (!C.perdeuEm) C.perdeuEm = Date.now();
+    // tenta por até 15 minutos, com pausas cada vez maiores
+    if (Date.now() - C.perdeuEm > 15 * 60e3) {
+      sairParaInicio("Não deu para voltar à sala. Se o anfitrião ainda estiver jogando, toque em Voltar na tela inicial.");
+      return;
+    }
     clearTimeout(C.tRecon);
-    var cod = C.codigo;
-    C.tRecon = setTimeout(function () { if (C && C.codigo === cod) conectarCliente(cod, true); }, 2500);
+    var cod = C.codigo, espera = Math.min(10000, 2000 + C.tentativas * 1000);
+    C.tRecon = setTimeout(function () { if (C && C.codigo === cod) conectarCliente(cod, true); }, espera);
   }
 
   /* ================= Comum ================= */
@@ -357,6 +371,10 @@
   function receberVisao(v) {
     var antes = V;
     V = v;
+    if (v.caso && window.Fotos) {
+      Fotos.marcarRemoto(v.caso.id, !!v.fotosIA);
+      if (!antes || !antes.caso || antes.caso.id !== v.caso.id || (v.fotosIA && !antes.fotosIA)) Fotos.carregarCaso(v.caso.id);
+    }
     offsetRelogio = v.agora - Date.now();
     ui.carregando = "";
     // notificações
@@ -400,6 +418,25 @@
       if (ult && (!ultAntes || ult.id !== ultAntes.id) && !ult.sistema && ult.autorId !== v.meuId) { toast("💬 " + ult.autor + ": " + ult.texto.slice(0, 40)); som("sino"); }
     }
     if (v.fase === "rodada" && antes && antes.rodada !== v.rodada && v.rodada > 1) som("papel");
+    // alguém caiu ou voltou
+    if (antes && antes.fase !== "lobby" && v.fase !== "lobby" && antes.jogadores) {
+      var eraOnline = {};
+      antes.jogadores.forEach(function (j) { eraOnline[j.id] = j.online; });
+      v.jogadores.forEach(function (j) {
+        if (j.id === v.meuId || j.robo || eraOnline[j.id] == null) return;
+        if (eraOnline[j.id] && !j.online) { vibrar(250); som("novidade"); toast("📵 " + j.nome + " perdeu a conexão. Esperando voltar…", true); }
+        else if (!eraOnline[j.id] && j.online) { vibrar(60); som("sino"); toast("✅ " + j.nome + " voltou para a sala!"); }
+      });
+    }
+    // todos usaram as ações da rodada
+    if (v.fase === "rodada" && antes && antes.fase === "rodada" && antes.rodada === v.rodada) {
+      var faltavam = antes.jogadores.some(function (j) { return j.online && j.acoes > 0; });
+      var faltam = v.jogadores.some(function (j) { return j.online && j.acoes > 0; });
+      if (faltavam && !faltam) {
+        vibrar(150); som("carimbo");
+        toast("✅ Todos já usaram suas ações nesta rodada! " + (v.souHost ? "Conversem e toquem em ▶ para avançar." : "Conversem e aguardem o anfitrião avançar."));
+      }
+    }
     render();
     climaMusical();
   }
@@ -429,7 +466,8 @@
   }
   function faixa() {
     if (conectado) return "";
-    return '<div class="faixa-conexao">' + (modo === "host" ? "Sem internet — reconectando a sala…" : "Conexão perdida — reconectando…") + "</div>";
+    if (modo === "host") return '<div class="faixa-conexao">📡 Sem internet: reconectando a sala… Os amigos voltam sozinhos quando a conexão voltar.</div>';
+    return '<div class="faixa-conexao">📡 Conexão perdida: reconectando' + (C && C.tentativas > 1 ? " (tentativa " + C.tentativas + ")" : "") + '… <button class="link" data-a="reconectarAgora" style="color:#fff;text-decoration:underline;padding:0 4px">Tentar agora</button></div>';
   }
 
   function render() {
@@ -525,7 +563,8 @@
         '</div><div><div class="t">' + esc(c.titulo) + '<span class="dif">' + (c.ia ? "✨ IA" : esc(c.dificuldade)) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
     });
     h += "</div>";
-    if (V.souHost) h += '<button class="btn fantasma btn-ia" data-a="iaGerar" data-origem="sala" style="margin-top:10px">✨ Gerar caso novo com IA</button>';
+    if (V.souHost) h += '<button class="btn fantasma btn-ia" data-a="iaGerar" data-origem="sala" style="margin-top:10px">✨ Gerar caso novo com IA</button>' +
+      '<button class="btn fantasma btn-ia" data-a="iaFotos" style="margin-top:8px">📷 ' + (window.Fotos && Fotos.temIA(V.config.casoId) ? "Refazer as fotos da IA deste caso" : "Criar fotos das cenas com IA") + "</button>";
 
     h += '<h2 class="secao">Regras da mesa</h2>';
     if (V.souHost) {
@@ -578,6 +617,7 @@
     }
     return '<div class="carta-papel detetive"><div class="grande">' + e.icone + '</div><div class="papel-nome">' + esc(e.nome) + "</div>" +
       '<div class="pequeno" style="opacity:.9">' + esc(e.desc) + " Esse dossiê já está no seu caderno.</div>" +
+      (e.id === "fotografo" ? '<div class="pequeno camera-dica">📷 <b>Sua câmera tem 2 fotos.</b> No Quadro, toque em <b>Fotografar</b> numa pista que veio de um local: a foto mostra se ela existe mesmo lá. Cada foto gasta 1 ação.</div>' : "") +
       (V.solo || V.robos ? '<div class="pequeno" style="margin-top:12px;opacity:.85">🤖 ' + (V.solo ? "Seus colegas são detetives robôs" : "Há detetives robôs na mesa") + ', e <b>um dos robôs é o Cúmplice</b>: ele vai plantar pistas falsas no quadro. Use <b>Eu também vi</b>, leia a Conversa e descubra quem está mentindo.</div>'
         : V.treino ? '<div class="pequeno" style="margin-top:12px;opacity:.85">Modo treino: ninguém está mentindo. Trabalhem juntos!</div>'
         : '<div class="pequeno" style="margin-top:12px;opacity:.85">⚠️ Um dos seus colegas é o <b>Cúmplice</b>: conhece a verdade e pode plantar pistas falsas. Desconfie de pistas que ninguém mais consegue confirmar.</div>') + "</div>";
@@ -589,6 +629,7 @@
     var c = V.caso, eu = meuJogador();
     var h = '<div class="conteudo"><div class="dossie-capa"><div class="emoji">' + c.capa + '</div><h1 class="titulo">' + esc(c.titulo) + '</h1><div class="sub">' + esc(c.subtitulo) + "</div>" +
       (c.ia ? '<div class="selo-ia">✨ Caso criado por IA: pode ter pequenas falhas de lógica</div>' : "") + "</div>";
+    if (V.souHost && window.Fotos && !Fotos.temIA(c.id)) h += '<div class="centro"><button class="link" data-a="iaFotos">📷 Criar fotos das cenas com IA</button></div>';
     h += '<h2 class="secao">O caso</h2><div class="historia">' + c.intro.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("") + "</div>";
     h += '<h2 class="secao">Suspeitos</h2>' + listaSuspeitos(false);
     h += '<h2 class="secao">Seu papel</h2>';
@@ -641,10 +682,13 @@
     if (V.fase === "rodada") t += "<span>Rodada <b>" + V.rodada + "/" + V.totalRodadas + "</b></span>" + '<span class="relogio" id="relogio"></span>';
     else if (V.solo) t += "<span><b>⚖️ Acusação final</b></span>";
     else t += "<span><b>⚖️ Acusação</b></span><span>" + V.jogadores.filter(function (j) { return j.votou && !j.robo; }).length + "/" + V.jogadores.filter(function (j) { return !j.robo; }).length + " votaram</span>";
+    var fora = V.jogadores.filter(function (j) { return !j.online && !j.robo; }).map(function (j) { return j.nome; });
+    if (fora.length) t += '<span class="fora">📵 ' + esc(fora.join(", ")) + " fora</span>";
     t += "</div></div>";
     if (V.souHost) {
       var rot = V.fase === "votacao" ? "Encerrar" : (V.rodada < V.totalRodadas ? "Rodada " + (V.rodada + 1) + " ▶" : "Acusar ▶");
-      if (!(V.solo && V.fase === "votacao")) t += '<button class="btn latao pequeno" data-a="avancarJogo">' + rot + "</button>";
+      var todosAgiram = V.fase === "rodada" && !V.jogadores.some(function (j) { return j.online && j.acoes > 0; });
+      if (!(V.solo && V.fase === "votacao")) t += '<button class="btn latao pequeno' + (todosAgiram ? " chama" : "") + '" data-a="avancarJogo">' + rot + "</button>";
     }
     t += '<button class="x" data-a="menu" aria-label="Menu">⋮</button>';
     pinta("topo", t);
@@ -696,6 +740,7 @@
         : "Você já agiu nesta rodada. Compartilhe o que achou e converse com o grupo.") + "</div></div>";
     var aguard = V.jogadores.filter(function (j) { return j.acoes > 0 && j.online; }).map(function (j) { return j.nome; });
     if (aguard.length && n === 0) h += '<div class="mudo pequeno" style="margin-top:8px">Ainda investigando: ' + esc(aguard.join(", ")) + "</div>";
+    if (!aguard.length) h += '<div class="cartao pequeno todos-agiram">✅ <b>Todos já usaram suas ações nesta rodada.</b> ' + (V.souHost ? "Quando terminarem de conversar, toque no botão ▶ lá em cima para avançar." : "Conversem pelo Quadro e pela Conversa. O anfitrião vai avançar a rodada.") + "</div>";
     h += '<h2 class="secao">Examinar um local</h2><div class="grade-locais">';
     c.locais.forEach(function (l) {
       var v = V.vistos["l:" + l.id] || 0;
@@ -714,12 +759,17 @@
     r += '<span class="alfinete"></span><div class="origem">' + esc(q.origem) + '</div><div class="texto">' + esc(q.texto) + '</div><div class="rodape"><span class="esp">' +
       (q.novidade ? "📢 Delegacia · rodada " + q.rodada : "por <b>" + esc(q.autor) + "</b> · rodada " + q.rodada) + "</span>";
     if (q.podeConfirmar) r += '<button class="btn pequeno" data-a="confirmar" data-id="' + q.id + '">👁️ Eu também vi</button>';
+    if (V.fotosRestantes > 0 && V.fase === "rodada" && !q.novidade && q.autorId !== V.meuId && localDaOrigem(q.origem))
+      r += '<button class="btn pequeno camera" data-a="fotografar" data-id="' + q.id + '">📷 Fotografar</button>';
     r += "</div>";
     if (q.confirmados.length) r += '<div class="rodape confirmado">✔ Também visto por: ' + esc(q.confirmados.join(", ")) + "</div>";
     if (q.minhaFalsa) r += '<div class="rodape" style="color:var(--vermelho-escuro)"><span class="carimbo-mini">sua pista falsa</span></div>';
     return r + "</div>";
   }
 
+  function localDaOrigem(origem) {
+    return V.caso.locais.filter(function (l) { return origem === l.icone + " " + l.nome || origem === l.nome; })[0] || null;
+  }
   function abaQuadro() {
     var h = '<div class="mudo pequeno" style="margin-bottom:12px">Pistas que o grupo compartilhou. Se você encontrou a mesma pista, toque em <b>Eu também vi</b>: o jogo confere no seu caderno, então pista confirmada é pista verdadeira.</div>';
     if (!V.quadro.length) return h + '<div class="quadro-mural"><div class="vazio">O quadro está vazio.<br>Publique suas descobertas pelo Caderno.</div></div>';
@@ -738,7 +788,17 @@
     if (!lista.length) h += '<div class="vazio">Nada anotado ainda.</div>';
     lista.forEach(function (e) {
       var pub = V.publicadas[e.pid];
-      h += '<div class="papel' + (e.tipo === "novidade" ? " novidade" : "") + '"><div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + '</div><div class="rodape"><span class="esp">' +
+      var fotoE = "";
+      if (e.tipo === "local") {
+        var lid = String(e.pid).split(":")[1], lc = V.caso.locais.filter(function (x) { return x.id === lid; })[0];
+        if (lc) fotoE = '<div class="foto-lado">' + Fotos.polaroide({ chave: V.caso.id + ":" + lid, icone: lc.icone, legenda: lc.nome, pequeno: true }) + "</div>";
+      } else if (e.tipo === "foto") {
+        var lc2 = V.caso.locais.filter(function (x) { return x.id === e.local; })[0] || {};
+        fotoE = '<div class="centro" style="margin:4px 0 10px">' + Fotos.polaroide({ chave: V.caso.id + ":" + e.local, icone: lc2.icone, legenda: lc2.nome, selo: e.confere ? "confere" : "nao" }) + "</div>";
+      } else if (e.tipo === "dossie" && V.papel && V.papel.esp && V.papel.esp.id === "fotografo") {
+        fotoE = '<div class="centro" style="margin:4px 0 10px">' + Fotos.polaroide({ chave: V.caso.id + ":dossie", icone: "📷", legenda: "Foto do seu dossiê" }) + "</div>";
+      }
+      h += '<div class="papel' + (e.tipo === "novidade" ? " novidade" : "") + (fotoE && e.tipo === "local" ? " com-foto" : "") + '">' + fotoE + '<div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + '</div><div class="rodape"><span class="esp">' +
         (e.rodada ? "rodada " + e.rodada : "início do caso") + "</span>" +
         (e.tipo === "novidade" ? "" : pub ? '<span class="confirmado">📌 no quadro (' + esc(pub) + ")</span>" : '<button class="btn pequeno" data-a="publicar" data-id="' + esc(e.pid) + '">📌 Publicar</button>') +
         "</div></div>";
@@ -908,10 +968,11 @@
       var c = LS.get("ca_cliente", null);
       if (!c) return;
       if (!meuNome) { toast("Digite seu nome primeiro.", true); return; }
-      conectarCliente(c.codigo);
+      conectarCliente(c.codigo, false, true);
     },
     esquecer: function () { LS.del("ca_host"); LS.del("ca_cliente"); ui.shell = null; render(); },
     cancelar: function () { sairParaInicio(); },
+    reconectarAgora: function () { if (C) { clearTimeout(C.tRecon); toast("Tentando reconectar…"); conectarCliente(C.codigo, true); } },
     regras: function () {
       abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:12px">Como jogar</h2><div class="regras">' +
         "<p><b>1. Sala.</b> Um jogador cria a sala e passa o código de 4 letras. Os amigos entram pelo próprio celular. De 3 a 7 jogadores (no modo treino, a partir de 1).</p>" +
@@ -921,6 +982,7 @@
         "<p><b>4. Quadro.</b> Publique no quadro o que quiser mostrar. Se você achou a mesma pista que outra pessoa, toque em <b>Eu também vi</b>: o jogo confere, então pista confirmada é pista verdadeira.</p>" +
         "<p><b>5. O Cúmplice</b> também investiga, mas pode plantar até 2 pistas falsas, que aparecem no quadro como se fossem reais. Pista que ninguém consegue confirmar merece desconfiança.</p>" +
         "<p><b>6. Acusação.</b> No fim, cada um vota: quem é o culpado, como foi feito, por quê e quem é o Cúmplice. Vale a acusação mais votada.</p>" +
+        "<p><b>📷 Fotógrafo:</b> quem tira o Fotógrafo tem uma câmera com 2 fotos. No Quadro, ele fotografa uma pista que veio de um local e descobre se ela existe mesmo lá. Só ele vê o resultado.</p>" +
         "<p><b>Em dupla:</b> com só 2 pessoas, crie a sala e escolha <b>🤖 Cúmplice robô</b> nas regras da mesa. Detetives robôs entram no jogo e um deles é o Cúmplice.</p>" +
         "<p><b>Sozinho:</b> no botão <b>Jogar sozinho</b>, você investiga com 3 detetives robôs, sem internet. Um deles é o Cúmplice: desconfie de pista que ninguém confirma e preste atenção quando um robô diz que não viu nada no lugar.</p>" +
         "<p><b>Dica:</b> joguem numa chamada de voz ou vídeo no WhatsApp. Discutir é metade da graça!</p></div>" +
@@ -980,6 +1042,7 @@
     iaRemover: function (el) {
       var id = el.dataset.id;
       IA.remover(id);
+      if (window.Fotos) Fotos.apagarCaso(id);
       if (H && H.motor.s.config.casoId === id) {
         var ms = H.motor, lista = ms.casosDoNivel(ms.s.config.nivel);
         ms.s.config.casoId = (lista[0] || CASOS[0]).id;
@@ -1087,6 +1150,49 @@
     publicar: function (el) { enviarAcao({ tipo: "publicar", pid: el.dataset.id }, function (r) { if (r && r.ok) { som("alfinete"); toast("📌 Publicada no quadro"); } }); },
     publicarModal: function (el) { fecharModal(); acoes.publicar(el); },
     confirmar: function (el) { enviarAcao({ tipo: "confirmar", itemId: el.dataset.id }, function (r) { if (r && r.ok) { vibrar(30); som("carimbo"); toast("✔ Confirmada"); } }); },
+    fotografar: function (el) {
+      var q = V.quadro.filter(function (x) { return x.id === el.dataset.id; })[0];
+      if (!q) return;
+      var lc = localDaOrigem(q.origem);
+      abrirModal('<h2 class="titulo" style="font-size:22px;margin-bottom:6px">📷 Fotografar a pista</h2>' +
+        '<p class="pequeno">Você vai fotografar <b>' + esc(lc.nome) + '</b> para conferir a pista de <b>' + esc(q.autor) + '</b>:</p><div class="papel"><div class="texto">' + esc(q.texto) + "</div></div>" +
+        '<p class="mudo pequeno">Gasta 1 ação desta rodada. Restam ' + V.fotosRestantes + " foto" + (V.fotosRestantes > 1 ? "s" : "") + ' no filme. Só você vê o resultado: depois, conte (ou não) ao grupo.</p>' +
+        '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Agora não</button><button class="btn prim" data-a="fotografarOk" data-id="' + q.id + '">📷 Fotografar</button></div>');
+    },
+    fotografarOk: function (el) {
+      enviarAcao({ tipo: "fotografar", itemId: el.dataset.id }, function (r) {
+        if (!r || !r.ok || !r.nova) return;
+        var e = r.nova, lc = V.caso.locais.filter(function (x) { return x.id === e.local; })[0] || {};
+        som("tecla"); setTimeout(function () { som(e.confere ? "carimbo" : "novidade"); }, 450);
+        vibrar(80);
+        abrirModal('<div class="centro flash-camera">' + Fotos.polaroide({ chave: V.caso.id + ":" + e.local, icone: lc.icone, legenda: lc.nome, selo: e.confere ? "confere" : "nao" }) + "</div>" +
+          '<div class="papel" style="margin-top:14px"><div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + "</div></div>" +
+          '<div class="pilha" style="margin-top:14px"><button class="btn prim" data-a="publicarModal" data-id="' + esc(e.pid) + '">📌 Mostrar a foto no quadro</button><button class="btn fantasma" data-a="fechar">Guardar no meu caderno</button></div>');
+      });
+    },
+    iaFotos: function () {
+      if (!IA.config().chave) { acoes.iaConfig(); toast("Primeiro, configure a chave do Gemini."); return; }
+      var id = V && (V.caso ? V.caso.id : V.config.casoId);
+      var caso = CASOS.filter(function (c) { return c.id === id; })[0];
+      if (!caso) return;
+      if (ui.fotosGerando) return;
+      ui.fotosGerando = true;
+      abrirModal('<div class="gerando-ia"><div class="lupa-ia">📷</div><div class="titulo" style="font-size:22px">Fotografando as cenas…</div><div id="fotoProg" class="mudo pequeno" style="margin-top:8px">Preparando a câmera…</div>' +
+        '<div class="barra"><span id="fotoBarra" style="width:4%"></span></div><div class="mudo pequeno" style="margin-top:12px">São 6 fotos. Cada uma leva alguns segundos.</div></div>');
+      Fotos.gerarIA(caso, function (msg, i, tot) {
+        var p = document.getElementById("fotoProg"); if (p) p.textContent = msg;
+        var b = document.getElementById("fotoBarra"); if (b) b.style.width = Math.max(4, Math.round(i / tot * 100)) + "%";
+      }).then(function (n) {
+        ui.fotosGerando = false;
+        fecharModal();
+        toast(n ? "📷 " + n + " fotos criadas pela IA para \"" + caso.titulo + "\"!" : "A IA não devolveu nenhuma foto. O jogo segue com as fotos ilustradas.", !n);
+        if (H) hostDifundir(); else render();
+      }).catch(function (e) {
+        ui.fotosGerando = false;
+        abrirModal('<h2 class="titulo" style="font-size:22px;margin-bottom:8px">Fotos da IA</h2><p>' + esc(e.message) + '</p><div class="pilha"><button class="btn fantasma" data-a="iaConfig">Configurar IA</button><button class="btn prim" data-a="fechar">Ok</button></div>');
+        if (H) hostDifundir();
+      });
+    },
     segredo: function () { ui.segredo = !ui.segredo; render(); },
     escolherFalsa: function (el) { ui.falsa.idx = parseInt(el.dataset.i, 10); ui.falsa.origem = ""; render(); },
     plantar: function () {
@@ -1149,7 +1255,12 @@
       vibrar(50);
       som("papel");
       var e = r.nova;
-      abrirModal('<div class="mudo pequeno centro" style="margin-bottom:12px">' + (alvo === "local" ? "Você encontrou:" : "O suspeito disse:") + "</div>" +
+      var foto = "";
+      if (alvo === "local") {
+        var lc = V.caso.locais.filter(function (x) { return x.id === id; })[0] || {};
+        foto = '<div class="centro" style="margin-bottom:14px">' + Fotos.polaroide({ chave: V.caso.id + ":" + id, icone: lc.icone, legenda: lc.nome }) + "</div>";
+      }
+      abrirModal(foto + '<div class="mudo pequeno centro" style="margin-bottom:12px">' + (alvo === "local" ? "Você encontrou:" : "O suspeito disse:") + "</div>" +
         '<div class="papel"><span class="alfinete"></span><div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + "</div></div>" +
         '<div class="pilha" style="margin-top:18px"><button class="btn prim" data-a="publicarModal" data-id="' + esc(e.pid) + '">📌 Publicar no quadro</button><button class="btn fantasma" data-a="fechar">Guardar só no meu caderno</button></div>');
     });
@@ -1199,7 +1310,7 @@
     if (modo === "host" && H) {
       for (var cid in H.conns) {
         H.rede.enviar(cid, { t: "ping" });
-        if (H.visto[cid] && agora - H.visto[cid] > 30000) { H.rede.derrubar(cid); hostFechou(cid); }
+        if (H.visto[cid] && agora - H.visto[cid] > 20000) { H.rede.derrubar(cid); hostFechou(cid); }
       }
     } else if (modo === "cliente" && C && C.entrou && conectado && agora - C.ultimo > 15000) {
       clientePerdeu();
