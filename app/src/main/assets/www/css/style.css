@@ -297,3 +297,114 @@ textarea.entrada { min-height: 90px; resize: vertical; }
 .vazio { text-align: center; color: var(--papel2); opacity: .75; padding: 30px 10px; font-family: "Elite", monospace; }
 .linha-flex { display: flex; gap: 8px; }
 .linha-flex > * { flex: 1; }
+
+/* =========================================================
+   Clima, transições e animações
+   ========================================================= */
+#chuva { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+#lampiao {
+  position: fixed; left: 50%; top: -30vh; width: 140vw; height: 80vh; margin-left: -70vw; z-index: 0; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(214,165,72,.13), rgba(214,165,72,.04) 55%, transparent 75%);
+  animation: tremula 7s infinite;
+}
+.sem-clima #lampiao { animation: none; }
+@keyframes tremula {
+  0%, 100% { opacity: 1; } 42% { opacity: .92; } 44% { opacity: .55; } 45% { opacity: .95; } 47% { opacity: .7; }
+  48% { opacity: 1; } 78% { opacity: .9; } 80% { opacity: .75; } 81% { opacity: 1; }
+}
+#app { position: relative; z-index: 1; }
+
+/* troca de tela */
+.tela.entrar { animation: entraTela .38s ease-out; }
+@keyframes entraTela { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* início: lupa balançando e slogan datilografado */
+.logo .lupa { animation: balanca 4.5s ease-in-out infinite; transform-origin: 50% 20%; }
+@keyframes balanca { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg) translateY(-2px); } }
+.logo .slogan.digita {
+  display: inline-block; overflow: hidden; white-space: nowrap; width: 0; border-right: 2px solid var(--latao);
+  animation: digita 2.2s steps(25) .5s forwards, cursor .8s step-end infinite;
+}
+@keyframes digita { to { width: 25.5ch; } }
+@keyframes cursor { 50% { border-color: transparent; } }
+.logo .titulo { animation: surgeTitulo 1.1s ease-out; }
+@keyframes surgeTitulo { from { opacity: 0; letter-spacing: 10px; filter: blur(6px); } to { opacity: 1; letter-spacing: .5px; filter: none; } }
+.avatar.robo { font-size: 20px; }
+
+/* carta do papel virando */
+.flip { perspective: 1100px; }
+.flip-in { display: grid; transform-style: preserve-3d; animation: vira 1s cubic-bezier(.3,.7,.3,1) forwards; }
+.flip-in > * { grid-area: 1 / 1; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.flip-in > .verso { transform: rotateY(180deg); }
+@keyframes vira { 0% { transform: rotateY(0) scale(1); } 45% { transform: rotateY(90deg) scale(1.06); } 100% { transform: rotateY(180deg) scale(1); } }
+.carta-papel.cumplice.brilha { animation: sangue 2.2s ease-out 1; }
+@keyframes sangue { 0% { box-shadow: 0 0 0 0 rgba(200,55,45,.0); } 40% { box-shadow: 0 0 40px 6px rgba(200,55,45,.55); } 100% { box-shadow: 0 0 0 0 rgba(200,55,45,0); } }
+.carta-papel.detetive.brilha { animation: azulado 2.2s ease-out 1; }
+@keyframes azulado { 40% { box-shadow: 0 0 36px 4px rgba(109,159,209,.45); } }
+.carta-papel.oculta .grande { animation: pulsa 1.8s ease-in-out infinite; }
+@keyframes pulsa { 50% { transform: scale(1.12); } }
+
+/* pistas chegando no quadro */
+.papel.chegando { animation: prende .7s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes prende {
+  0% { opacity: 0; transform: translateY(-60px) rotate(-9deg) scale(1.12); box-shadow: 0 30px 40px rgba(0,0,0,.5); }
+  70% { opacity: 1; transform: translateY(3px) rotate(1deg) scale(1); }
+  100% { opacity: 1; }
+}
+.papel.chegando .alfinete { animation: alfinete .35s ease-out .55s both; }
+@keyframes alfinete { from { transform: translateY(-18px) scale(1.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.selo-conf {
+  position: absolute; top: 10px; right: 8px; color: #2f6b3a; border: 3px solid currentColor; border-radius: 6px; padding: 1px 7px;
+  font-family: "Elite", monospace; font-size: 13px; letter-spacing: 1px; transform: rotate(8deg); opacity: .8; pointer-events: none;
+  mix-blend-mode: multiply;
+}
+.selo-conf.carimbar { animation: carimbar .45s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes carimbar { from { transform: rotate(-10deg) scale(3); opacity: 0; } to { transform: rotate(8deg) scale(1); opacity: .8; } }
+
+/* carimbo do resultado */
+.revela .carimbo { animation: carimbar2 .55s cubic-bezier(.3,1.6,.5,1) .25s both; }
+@keyframes carimbar2 { from { transform: rotate(-14deg) scale(3); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+.revela .culpado { animation: surgeTitulo 1.2s ease-out .4s both; }
+
+/* cortina: abertura e veredito */
+.cortina {
+  position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px;
+  background: radial-gradient(60% 45% at 50% 42%, rgba(214,165,72,.0), rgba(0,0,0,.0)), #07080b; animation: fade .35s;
+  transition: background 1.2s;
+}
+.cortina.saindo { opacity: 0; transition: opacity .4s; }
+.cortina .ficha { max-width: 420px; }
+.cortina .conf { font-family: "Elite", monospace; letter-spacing: 4px; color: var(--vermelho); font-size: 13px; border: 2px solid var(--vermelho); display: inline-block; padding: 3px 10px; transform: rotate(-2deg); }
+.cortina .num { font-size: 22px; color: var(--latao); margin: 16px 0 6px; min-height: 30px; letter-spacing: 2px; }
+.cortina .capa-grande { font-size: 84px; opacity: 0; transform: scale(.85); transition: opacity 1s, transform 1.4s; filter: drop-shadow(0 10px 30px rgba(214,165,72,.4)); }
+.cortina.acesa { background: radial-gradient(60% 45% at 50% 42%, rgba(214,165,72,.18), rgba(0,0,0,0) 70%), #07080b; }
+.cortina.acesa .capa-grande { opacity: 1; transform: none; }
+.cortina .titulo { font-size: 36px; min-height: 44px; margin-top: 8px; opacity: 0; }
+.cortina .sub { font-family: "Playfair", serif; font-style: italic; font-weight: 700; color: var(--mudo); opacity: 0; margin-top: 8px; }
+.cortina .surgir { animation: surgeTitulo 1s ease-out forwards; }
+.cortina .pular { position: absolute; bottom: calc(24px + var(--seguro-baixo)); left: 0; right: 0; font-size: 12px; color: var(--mudo); opacity: .6; font-family: "Elite", monospace; }
+.cortina.veredito .reticencias { font-size: 46px; color: var(--latao); margin: 18px 0; height: 60px; }
+.cortina.veredito .reticencias span { animation: pisca 1s infinite; opacity: .2; }
+.cortina.veredito .reticencias span:nth-child(2) { animation-delay: .2s; }
+.cortina.veredito .reticencias span:nth-child(3) { animation-delay: .4s; }
+@keyframes pisca { 50% { opacity: 1; } }
+.cortina.veredito .grande-carimbo { font-size: 34px; opacity: 0; transform: scale(3) rotate(-14deg); }
+.cortina.veredito.bateu .reticencias { visibility: hidden; height: 0; margin: 0; }
+.cortina.veredito.bateu .grande-carimbo { animation: carimbar2 .5s cubic-bezier(.3,1.6,.5,1) both; }
+.cortina.veredito.bateu { animation: treme .35s .05s; }
+.cortina.veredito.bateu .sub { animation: surgeTitulo 1s ease-out .5s forwards; }
+@keyframes treme { 20% { transform: translate(-6px, 3px); } 40% { transform: translate(5px, -4px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
+
+/* som e efeitos */
+.ajuste { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--linha); }
+.ajuste:last-child { border-bottom: 0; }
+.ajuste .t { flex: 1; } .ajuste .t small { display: block; color: var(--mudo); }
+.chave { width: 52px; height: 30px; border-radius: 15px; background: var(--painel2); border: 1px solid var(--linha); position: relative; cursor: pointer; flex-shrink: 0; }
+.chave::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--mudo); transition: transform .2s, background .2s; }
+.chave.on { background: #4a2320; border-color: var(--vermelho); }
+.chave.on::after { transform: translateX(22px); background: var(--vermelho); }
+.btn-som { position: absolute; top: calc(10px + var(--seguro-topo)); right: 12px; z-index: 5; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
