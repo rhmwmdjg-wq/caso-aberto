@@ -522,9 +522,10 @@
       if (!V.souHost && !sel) return;
       if (V.souHost && c.dificuldade !== nivel) return;
       h += '<button class="caso-opcao' + (sel ? " sel" : "") + '" data-a="caso" data-id="' + c.id + '"' + (V.souHost ? "" : " disabled") + '><div class="capa">' + c.capa +
-        '</div><div><div class="t">' + esc(c.titulo) + '<span class="dif">' + esc(c.dificuldade) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
+        '</div><div><div class="t">' + esc(c.titulo) + '<span class="dif">' + (c.ia ? "✨ IA" : esc(c.dificuldade)) + '</span></div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
     });
     h += "</div>";
+    if (V.souHost) h += '<button class="btn fantasma btn-ia" data-a="iaGerar" data-origem="sala" style="margin-top:10px">✨ Gerar caso novo com IA</button>';
 
     h += '<h2 class="secao">Regras da mesa</h2>';
     if (V.souHost) {
@@ -577,7 +578,8 @@
     shell("intro", '<div class="tela"><div id="faixa"></div><div class="rolagem" id="corpo"></div><div class="base" id="base"></div></div>');
     pinta("faixa", faixa());
     var c = V.caso, eu = meuJogador();
-    var h = '<div class="conteudo"><div class="dossie-capa"><div class="emoji">' + c.capa + '</div><h1 class="titulo">' + esc(c.titulo) + '</h1><div class="sub">' + esc(c.subtitulo) + "</div></div>";
+    var h = '<div class="conteudo"><div class="dossie-capa"><div class="emoji">' + c.capa + '</div><h1 class="titulo">' + esc(c.titulo) + '</h1><div class="sub">' + esc(c.subtitulo) + "</div>" +
+      (c.ia ? '<div class="selo-ia">✨ Caso criado por IA: pode ter pequenas falhas de lógica</div>' : "") + "</div>";
     h += '<h2 class="secao">O caso</h2><div class="historia">' + c.intro.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("") + "</div>";
     h += '<h2 class="secao">Suspeitos</h2>' + listaSuspeitos(false);
     h += '<h2 class="secao">Seu papel</h2>';
@@ -922,7 +924,94 @@
         linha("musica", "🎵 Música de suspense", "Trilha e chuva de fundo, criadas pelo app", sp.musica) +
         linha("efeitos", "🔔 Efeitos sonoros", "Papel, carimbo, máquina de escrever, veredito", sp.efeitos) +
         linha("clima", "🌧️ Chuva e lampião na tela", "Desligue se o celular ficar lento", ap.clima) +
-        '</div><button class="btn prim" data-a="fechar" style="margin-top:14px">Pronto</button>');
+        '</div><button class="btn fantasma" data-a="iaConfig" style="margin-top:12px">🤖 Casos por IA (Gemini)' + (window.IA && IA.config().chave ? " · ✅ ativo" : "") + "</button>" +
+        '<button class="btn prim" data-a="fechar" style="margin-top:14px">Pronto</button>');
+    },
+    iaConfig: function () {
+      var cfg = IA.config(), lista = IA.salvos();
+      ui.iaModelos = ui.iaModelos || [];
+      var ops = ui.iaModelos.length ? ui.iaModelos : (cfg.modelo ? [{ id: cfg.modelo, nome: cfg.modelo }] : []);
+      abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">Casos por IA</h2>' +
+        '<p class="mudo pequeno" style="margin-top:0">O app usa o <b>Google Gemini</b> para escrever casos novos. Para isso, você precisa de uma chave de acesso, que é grátis:</p>' +
+        '<ol class="passos pequeno"><li>Abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> e entre com sua conta Google.</li><li>Toque em <b>Create API key</b> (Criar chave) e copie a chave.</li><li>Cole aqui embaixo e toque em <b>Salvar e testar</b>.</li></ol>' +
+        '<label class="campo"><span>Chave do Gemini</span><input id="iaChave" class="entrada" type="password" autocomplete="off" placeholder="AIza…" value="' + esc(cfg.chave) + '"></label>' +
+        (ops.length ? '<label class="campo"><span>Modelo</span><select id="iaModelo" class="entrada">' + ops.map(function (m) { return "<option value=\"" + esc(m.id) + "\"" + (m.id === cfg.modelo ? " selected" : "") + ">" + esc(m.nome) + "</option>"; }).join("") + "</select></label>" : "") +
+        '<div id="iaStatus" class="pequeno" style="margin:-4px 0 10px"></div>' +
+        '<div class="linha-flex"><button class="btn prim" data-a="iaSalvar">Salvar e testar</button>' + (cfg.chave ? '<button class="btn fantasma" data-a="iaApagar" style="flex:.6">Apagar chave</button>' : "") + "</div>" +
+        '<p class="mudo pequeno">🔒 A chave fica guardada só neste celular e nunca vai para o GitHub nem para os amigos. No plano gratuito, o Google pode usar o que for enviado para melhorar os produtos dele. Não coloque dados pessoais no tema do caso.</p>' +
+        (lista.length ? '<h2 class="secao">Casos gerados (' + lista.length + ")</h2>" + lista.map(function (c) {
+          return '<div class="jogador"><div class="capa-mini">' + esc(c.capa) + '</div><div class="nome">' + esc(c.titulo) + '<div class="tag">' + esc(c.dificuldade) + (c.tema ? " · " + esc(c.tema) : "") + '</div></div><button class="x" data-a="iaRemover" data-id="' + esc(c.id) + '" aria-label="Apagar caso">🗑</button></div>';
+        }).join("") : "") +
+        '<button class="btn fantasma" data-a="fechar" style="margin-top:12px">Fechar</button>');
+    },
+    iaSalvar: function () {
+      var ch = (document.getElementById("iaChave") || {}).value || "";
+      var selM = document.getElementById("iaModelo");
+      var st = document.getElementById("iaStatus");
+      if (!ch.trim()) { toast("Cole a chave do Gemini.", true); return; }
+      IA.salvarConfig({ chave: ch, modelo: selM ? selM.value : IA.config().modelo });
+      if (st) st.innerHTML = '<span class="mudo">Testando a chave…</span>';
+      IA.listarModelos(ch.trim()).then(function (ms) {
+        if (!ms.length) throw new Error("A chave funciona, mas não encontrei nenhum modelo Gemini disponível.");
+        ui.iaModelos = ms;
+        var atual = IA.config().modelo;
+        if (!atual || !ms.some(function (m) { return m.id === atual; })) atual = ms[0].id;
+        IA.salvarConfig({ chave: ch, modelo: atual });
+        acoes.iaConfig();
+        var st2 = document.getElementById("iaStatus");
+        if (st2) st2.innerHTML = '<span class="certo">✅ Chave funcionando! Modelo: ' + esc(atual) + "</span>";
+        if (ui.iaDepois) { var o = ui.iaDepois; ui.iaDepois = null; setTimeout(function () { acoes.iaGerar({ dataset: { origem: o } }); }, 900); }
+      }).catch(function (e) {
+        var st2 = document.getElementById("iaStatus");
+        if (st2) st2.innerHTML = '<span class="errado">' + esc(e.message) + "</span>";
+      });
+    },
+    iaApagar: function () { IA.salvarConfig({ chave: "", modelo: "" }); ui.iaModelos = []; acoes.iaConfig(); toast("Chave apagada deste celular."); },
+    iaRemover: function (el) {
+      var id = el.dataset.id;
+      IA.remover(id);
+      if (H && H.motor.s.config.casoId === id) {
+        var ms = H.motor, lista = ms.casosDoNivel(ms.s.config.nivel);
+        ms.s.config.casoId = (lista[0] || CASOS[0]).id;
+      }
+      acoes.iaConfig(); toast("Caso apagado.");
+      if (H) hostDifundir(); else if (V) render();
+    },
+    iaGerar: function (el) {
+      var origem = (el && el.dataset && el.dataset.origem) || "sala";
+      if (!IA.config().chave) { ui.iaDepois = origem; acoes.iaConfig(); toast("Primeiro, configure a chave do Gemini."); return; }
+      var nivel = origem === "solo" ? (ui.soloNivel || "Fácil") : nivelAtual();
+      ui.iaOrigem = origem; ui.iaNivel = nivel;
+      abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:6px">✨ Gerar caso com IA</h2>' +
+        '<p class="mudo pequeno" style="margin-top:0">Nível <b>' + esc(nivel) + '</b>. A IA leva de 20 segundos a 1 minuto para escrever o caso.</p>' +
+        '<label class="campo"><span>Tema (opcional)</span><input id="iaTema" class="entrada" maxlength="140" autocomplete="off" placeholder="Ex.: festa de São João, hospital, time de futebol…"></label>' +
+        '<div class="pilha"><button class="btn prim" data-a="iaGerarOk">✨ Gerar caso</button><button class="btn fantasma" data-a="' + (origem === "solo" ? "solo" : "fechar") + '">Voltar</button></div>');
+    },
+    iaGerarOk: function () {
+      var tema = ((document.getElementById("iaTema") || {}).value || "").trim();
+      var origem = ui.iaOrigem, nivel = ui.iaNivel;
+      if (ui.iaGerando) return;
+      ui.iaGerando = true;
+      abrirModal('<div class="gerando-ia"><div class="lupa-ia">🔍</div><div class="titulo" style="font-size:22px">Escrevendo o caso…</div><div id="iaProg" class="mudo pequeno" style="margin-top:8px">Falando com o Gemini…</div>' +
+        '<div class="mudo pequeno" style="margin-top:14px">Pode deixar o celular ligado e esperar aqui.</div></div>');
+      IA.gerarCaso({ nivel: nivel, tema: tema }, function (msg) { var p = document.getElementById("iaProg"); if (p) p.textContent = msg; }).then(function (caso) {
+        ui.iaGerando = false;
+        IA.guardar(caso);
+        som("carimbo");
+        if (origem === "sala" && V && V.souHost && V.fase === "lobby") {
+          fecharModal();
+          enviarAcao({ tipo: "config", casoId: caso.id });
+          toast("✨ Caso \"" + caso.titulo + "\" criado!");
+        } else {
+          ui.soloNivel = caso.dificuldade;
+          acoes.solo({ dataset: { v: caso.dificuldade } });
+          toast("✨ Caso \"" + caso.titulo + "\" criado! Toque nele para jogar.");
+        }
+      }).catch(function (e) {
+        ui.iaGerando = false;
+        abrirModal('<h2 class="titulo" style="font-size:22px;margin-bottom:8px">Não deu certo</h2><p>' + esc(e.message) + '</p><div class="pilha"><button class="btn prim" data-a="iaGerar" data-origem="' + esc(origem) + '">Tentar de novo</button>' +
+          '<button class="btn fantasma" data-a="iaConfig">Configurar IA</button><button class="btn fantasma" data-a="fechar">Fechar</button></div>');
+      });
     },
     alternar: function (el) {
       var k = el.dataset.k, on = !el.classList.contains("on");
@@ -1028,8 +1117,9 @@
         }).join("") + '</div><div class="mudo pequeno" style="margin-bottom:10px">' + esc(NIVEIS.filter(function (x) { return x[0] === nivel; })[0][2]) + '</div><div class="casos">' +
         casosDoNivel(CASOS, nivel).map(function (c) {
           return '<button class="caso-opcao" data-a="soloCaso" data-id="' + c.id + '"><div class="capa">' + c.capa + '</div><div><div class="t">' + esc(c.titulo) +
-            '</div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
-        }).join("") + '</div><button class="btn fantasma" data-a="fechar" style="margin-top:12px">Voltar</button>');
+            (c.ia ? '<span class="dif">✨ IA</span>' : "") + '</div><div class="s">' + esc(c.subtitulo) + "</div></div></button>";
+        }).join("") + '</div><button class="btn fantasma btn-ia" data-a="iaGerar" data-origem="solo" style="margin-top:10px">✨ Gerar caso novo com IA</button>' +
+        '<button class="btn fantasma" data-a="fechar" style="margin-top:8px">Voltar</button>');
     },
     soloCaso: function (el) { fecharModal(); iniciarSolo(el.dataset.id, null); },
     retomarSolo: function () { var x = LS.get("ca_solo", null); if (x && x.estado) iniciarSolo(null, x.estado); },

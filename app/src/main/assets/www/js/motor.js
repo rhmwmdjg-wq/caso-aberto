@@ -575,7 +575,7 @@
       }),
       chat: s.chat.slice(-80),
       casos: this.casos.map(function (c) {
-        return { id: c.id, titulo: c.titulo, subtitulo: c.subtitulo, dificuldade: c.dificuldade, capa: c.capa };
+        return { id: c.id, titulo: c.titulo, subtitulo: c.subtitulo, dificuldade: c.dificuldade, capa: c.capa, ia: !!c.ia };
       }),
       minimo: this.minimoJogadores(),
       maximo: s.config.treino ? Math.min(MAX_JOGADORES, this.esps.length) : MAX_JOGADORES
@@ -584,7 +584,7 @@
 
     var papel = p.papeis[jid];
     v.caso = {
-      id: caso.id, titulo: caso.titulo, subtitulo: caso.subtitulo, intro: caso.intro, vitima: caso.vitima, capa: caso.capa,
+      id: caso.id, titulo: caso.titulo, subtitulo: caso.subtitulo, intro: caso.intro, vitima: caso.vitima, capa: caso.capa, ia: !!caso.ia,
       suspeitos: caso.suspeitos, metodos: caso.metodos, motivos: caso.motivos,
       locais: caso.locais.map(function (l) { return { id: l.id, nome: l.nome, icone: l.icone, total: l.pistas.length }; })
     };
