@@ -400,11 +400,23 @@
       lista = caso.depoimentos[sus.id]; chave = "d:" + sus.id; origem = "Depoimento de " + sus.nome;
     } else return { ok: false };
     var vistos = p.vistos[jid];
-    var n = vistos[chave] || 0;
-    if (n >= lista.length) return { ok: false, erro: "Você já descobriu tudo o que havia aqui." };
+    // quais pistas deste lugar a pessoa já viu (na cena 3D, ela escolhe o objeto)
+    p.vistosIdx = p.vistosIdx || {};
+    p.vistosIdx[jid] = p.vistosIdx[jid] || {};
+    var vistasAqui = p.vistosIdx[jid][chave];
+    if (!vistasAqui) { vistasAqui = []; for (var k = 0; k < (vistos[chave] || 0); k++) vistasAqui.push(k); p.vistosIdx[jid][chave] = vistasAqui; }
+    if (vistasAqui.length >= lista.length) return { ok: false, erro: "Você já descobriu tudo o que havia aqui." };
+    var n = -1;
+    if (typeof a.indice === "number" && a.indice >= 0 && a.indice < lista.length) {
+      if (vistasAqui.indexOf(a.indice) >= 0) return { ok: false, erro: "Você já examinou isso. Procure outro objeto." };
+      n = a.indice;
+    } else {
+      for (var i2 = 0; i2 < lista.length; i2++) if (vistasAqui.indexOf(i2) < 0) { n = i2; break; }
+    }
     var entrada = { pid: chave + ":" + n, tipo: a.alvo === "local" ? "local" : "depoimento", rodada: p.rodada, origem: origem, texto: lista[n] };
     p.cadernos[jid].push(entrada);
-    vistos[chave] = n + 1;
+    vistasAqui.push(n);
+    vistos[chave] = vistasAqui.length;
     p.acoes[jid]--;
     return { ok: true, nova: entrada };
   };
@@ -646,6 +658,7 @@
       v.caderno = p.cadernos[jid];
       v.minhasAcoes = p.acoes[jid] || 0;
       v.vistos = p.vistos[jid];
+      v.vistosIdx = (p.vistosIdx && p.vistosIdx[jid]) || {};
       v.meuVoto = p.votos[jid] || null;
       if (papel.esp === "fotografo") v.fotosRestantes = MAX_FOTOS - ((p.fotos && p.fotos[jid]) || 0);
       if (papel.tipo === "cumplice") {

@@ -115,6 +115,8 @@
     }
   }
   function aplicarTodas() { Object.keys(cache).forEach(aplicar); }
+  // foto tirada da cena 3D: usada quando ainda não há foto da IA
+  function usarSeVazio(chave, dataUrl) { if (dataUrl && !cache[chave]) { cache[chave] = dataUrl; aplicar(chave); } }
   function receber(chave, dataUrl) { delete pedidos[chave]; if (dataUrl) { cache[chave] = dataUrl; aplicar(chave); } }
 
   /* ---------------- Fotos com Gemini ---------------- */
@@ -232,6 +234,7 @@
     marcarRemoto: marcarRemoto,
     gerarIA: gerarIA,
     apagarCaso: apagarCaso,
+    usarSeVazio: usarSeVazio,
     aplicarTodas: aplicarTodas,
     // o app troca esta função para pedir a foto ao anfitrião
     solicitar: null,

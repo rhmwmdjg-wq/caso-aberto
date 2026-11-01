@@ -63,6 +63,52 @@
   ];
   function casosDoNivel(lista, nivel) { return lista.filter(function (c) { return c.dificuldade === nivel; }); }
   function nivelAtual() { return (V && V.config.nivel) || (V && V.casos.filter(function (c) { return c.id === V.config.casoId; })[0] || {}).dificuldade || "Fácil"; }
+  /* ---------- Cenas em 3D (piloto) ---------- */
+  var CASOS_3D = { brinde: true };
+  function pref3d() { var p = LS.get("ca_3d", null) || {}; return { ativo: p.ativo !== false, leve: !!p.leve }; }
+  function tem3D(casoId) { return !!CASOS_3D[casoId] && pref3d().ativo; }
+  var c3Carregando = null;
+  function carregar3D() {
+    if (window.Cena3D) return Promise.resolve(window.Cena3D);
+    if (!c3Carregando) c3Carregando = import(new URL("js/3d/cena3d.js", document.baseURI).href).then(function () { return window.Cena3D; });
+    return c3Carregando;
+  }
+  function acoes3D() {
+    if (!ui.c3 || !V) return;
+    var n = V.minhasAcoes || 0;
+    ui.c3.acoes(V.fase !== "rodada" ? "Só dá para examinar durante as rodadas" : n > 0 ? "🔍 " + n + (n === 1 ? " ação" : " ações") + " nesta rodada" : "Sem ações nesta rodada: só dá para olhar");
+  }
+  function abrir3D(localId) {
+    var lc = V.caso.locais.filter(function (x) { return x.id === localId; })[0];
+    if (!lc) return;
+    toast("Abrindo a cena em 3D…");
+    carregar3D().then(function (C3) {
+      if (!V || !V.caso) return;
+      var chave = "l:" + localId, vistas = (V.vistosIdx && V.vistosIdx[chave]) || [];
+      if (!vistas.length) for (var k = 0; k < ((V.vistos && V.vistos[chave]) || 0); k++) vistas.push(k);
+      var p = pref3d();
+      ui.c3 = C3.abrir({
+        casoId: V.caso.id, localId: localId, nome: lc.nome, icone: lc.icone, vistas: vistas, leve: p.leve,
+        aoTocar: function (indice, nome, visto) {
+          if (visto) { toast("Você já examinou: " + nome + ". A pista está no seu caderno."); return; }
+          if (V.fase !== "rodada") { toast("Só dá para examinar durante as rodadas.", true); return; }
+          if ((V.minhasAcoes || 0) <= 0) { toast("Suas ações desta rodada acabaram. Espere a próxima.", true); return; }
+          enviarAcao({ tipo: "investigar", alvo: "local", id: localId, indice: indice }, function (r) {
+            if (!r || !r.ok || !r.nova) return;
+            if (ui.c3) ui.c3.marcar(indice);
+            mostrarPista("local", localId, r.nova, nome);
+          });
+        },
+        aoFoto: function (url) { if (url && window.Fotos && V && V.caso) Fotos.usarSeVazio(V.caso.id + ":" + localId, url); },
+        aoFechar: function () { ui.c3 = null; window._cena3dAtual = null; }
+      });
+      window._cena3dAtual = ui.c3;
+      acoes3D();
+    }).catch(function () {
+      toast("Este celular não conseguiu abrir o 3D. Usando o modo normal.", true);
+      investigar("local", localId);
+    });
+  }
   function climaMusical() {
     if (!window.Som) return;
     if (!V) Som.clima("calmo");
@@ -354,6 +400,7 @@
     if (C) { clearTimeout(C.tRecon); try { C.rede.fechar(); } catch (e) {} }
     H = null; C = null; V = null; modo = null; conectado = true; ui.carregando = "";
     try { Anim.fechar(); } catch (e) {}
+    if (ui.c3) { try { ui.c3.fechar(); } catch (e) {} ui.c3 = null; }
     climaMusicalDepois();
     ui.shell = null;
     fecharModal();
@@ -439,6 +486,7 @@
     }
     render();
     climaMusical();
+    if (ui.c3) { if (v.fase !== "rodada" && v.fase !== "votacao") { ui.c3.fechar(); ui.c3 = null; } else acoes3D(); }
   }
 
   /* ================= Renderização ================= */
@@ -744,7 +792,7 @@
     h += '<h2 class="secao">Examinar um local</h2><div class="grade-locais">';
     c.locais.forEach(function (l) {
       var v = V.vistos["l:" + l.id] || 0;
-      h += '<button class="local' + (v >= l.total ? " esgotado" : "") + '" data-a="examinar" data-id="' + l.id + '"><span class="ic">' + l.icone + '</span><span class="n">' + esc(l.nome) +
+      h += '<button class="local' + (v >= l.total ? " esgotado" : "") + '" data-a="examinar" data-id="' + l.id + '">' + (tem3D(V.caso.id) ? '<span class="selo3d">3D</span>' : "") + '<span class="ic">' + l.icone + '</span><span class="n">' + esc(l.nome) +
         '</span><span class="p">' + (v >= l.total ? "✓ examinado" : v + "/" + l.total + " pistas") + "</span></button>";
     });
     h += '</div><h2 class="secao">Interrogar um suspeito</h2>' + listaSuspeitos(true);
@@ -996,6 +1044,8 @@
         linha("musica", "🎵 Música de suspense", "Trilha e chuva de fundo, criadas pelo app", sp.musica) +
         linha("efeitos", "🔔 Efeitos sonoros", "Papel, carimbo, máquina de escrever, veredito", sp.efeitos) +
         linha("clima", "🌧️ Chuva e lampião na tela", "Desligue se o celular ficar lento", ap.clima) +
+        linha("tres", "🧊 Cenas em 3D", "No caso O Último Brinde, os locais abrem em 3D", pref3d().ativo) +
+        linha("leve", "🪶 3D leve", "Sem sombras e com menos detalhe, para celulares simples", pref3d().leve) +
         '</div><button class="btn fantasma" data-a="iaConfig" style="margin-top:12px">🤖 Casos por IA (Gemini)' + (window.IA && IA.config().chave ? " · ✅ ativo" : "") + "</button>" +
         '<button class="btn prim" data-a="fechar" style="margin-top:14px">Pronto</button>');
     },
@@ -1090,6 +1140,7 @@
       var k = el.dataset.k, on = !el.classList.contains("on");
       el.classList.toggle("on", on);
       if (k === "clima") { if (window.Anim) Anim.definir("clima", on); }
+      else if (k === "tres" || k === "leve") { var p3 = pref3d(); p3[k === "tres" ? "ativo" : "leve"] = on; LS.set("ca_3d", p3); if (V) render(); }
       else if (window.Som) { Som.definir(k, on); if (on && k === "efeitos") som("carimbo"); }
     },
     convidar: function () {
@@ -1145,7 +1196,7 @@
     },
     sairOk: function () { sairDaSala(); },
     aba: function (el) { ui.aba = el.dataset.id; var c = document.getElementById("corpo"); if (c) { c._h = null; c.scrollTop = 0; } render(); },
-    examinar: function (el) { investigar("local", el.dataset.id); },
+    examinar: function (el) { if (tem3D(V.caso.id)) abrir3D(el.dataset.id); else investigar("local", el.dataset.id); },
     interrogar: function (el) { investigar("suspeito", el.dataset.id); },
     publicar: function (el) { enviarAcao({ tipo: "publicar", pid: el.dataset.id }, function (r) { if (r && r.ok) { som("alfinete"); toast("📌 Publicada no quadro"); } }); },
     publicarModal: function (el) { fecharModal(); acoes.publicar(el); },
@@ -1252,18 +1303,20 @@
     if (esgot) { toast("Você já descobriu tudo o que havia aqui.", true); return; }
     enviarAcao({ tipo: "investigar", alvo: alvo, id: id }, function (r) {
       if (!r || !r.ok || !r.nova) return;
+      mostrarPista(alvo, id, r.nova);
+    });
+  }
+  function mostrarPista(alvo, id, e, objeto) {
       vibrar(50);
       som("papel");
-      var e = r.nova;
       var foto = "";
       if (alvo === "local") {
         var lc = V.caso.locais.filter(function (x) { return x.id === id; })[0] || {};
-        foto = '<div class="centro" style="margin-bottom:14px">' + Fotos.polaroide({ chave: V.caso.id + ":" + id, icone: lc.icone, legenda: lc.nome }) + "</div>";
+        foto = '<div class="centro" style="margin-bottom:14px">' + Fotos.polaroide({ chave: V.caso.id + ":" + id, icone: lc.icone, legenda: lc.nome + (objeto ? " · " + objeto : "") }) + "</div>";
       }
       abrirModal(foto + '<div class="mudo pequeno centro" style="margin-bottom:12px">' + (alvo === "local" ? "Você encontrou:" : "O suspeito disse:") + "</div>" +
         '<div class="papel"><span class="alfinete"></span><div class="origem">' + esc(e.origem) + '</div><div class="texto">' + esc(e.texto) + "</div></div>" +
         '<div class="pilha" style="margin-top:18px"><button class="btn prim" data-a="publicarModal" data-id="' + esc(e.pid) + '">📌 Publicar no quadro</button><button class="btn fantasma" data-a="fechar">Guardar só no meu caderno</button></div>');
-    });
   }
 
   document.addEventListener("click", function (e) {
@@ -1291,6 +1344,7 @@
   /* Botão "voltar" do Android: o app nativo chama window.voltarAndroid() */
   window.voltarAndroid = function () {
     if (!$modal.hidden) { fecharModal(); return true; }
+    if (ui.c3) { ui.c3.fechar(); return true; }
     if (V && ui.shell === "jogo" && ui.aba !== "investigar" && ui.aba !== "acusar") {
       ui.aba = V.fase === "votacao" ? "acusar" : "investigar"; render(); return true;
     }
