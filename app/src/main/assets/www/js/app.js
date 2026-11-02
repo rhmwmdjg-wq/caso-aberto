@@ -566,6 +566,7 @@
   }
 
   function render() {
+    if (!V && !ui.carregando && ui.hub) { renderHub(); return; }
     if (!V) {
       if (ui.carregando) {
         shell("carregando", '<div class="tela"><div class="carregando"><div class="girando"></div><div id="msgcarr"></div><button class="link" data-a="cancelar">Cancelar</button></div></div>');
@@ -577,6 +578,19 @@
     else if (V.fase === "intro") renderIntro();
     else if (V.fase === "rodada" || V.fase === "votacao") renderJogo();
     else if (V.fase === "resultado") renderResultado();
+  }
+
+  /* ---------------- Tela inicial: escolher o jogo ---------------- */
+  function sufixoUrl() { var p = []; if (PERFIL) p.push("perfil=" + PERFIL); if (/[?&]local=1/.test(location.search)) p.push("local=1"); return p.length ? "?" + p.join("&") : ""; }
+  function renderHub() {
+    shell("hub", '<div class="tela"><div class="rolagem"><div class="conteudo hub">' +
+      '<div class="hub-cab"><h1 class="titulo">Bora jogar?</h1><div class="mudo">Escolha o jogo da vez</div></div>' +
+      '<button class="hub-jogo caso" data-a="hubCaso"><span class="emoji">🔍</span><span class="txt"><b>Caso Aberto</b><span>Jogo de detetive com os amigos. Um de vocês está mentindo.</span></span></button>' +
+      '<button class="hub-jogo truco" data-a="hubTruco"><span class="emoji">🃏</span><span class="txt"><b>Truco do Norte de Minas</b><span>Mineiro ou paulista, em duplas, com cerveja na mesa e tento de milho.</span></span></button>' +
+      '<div class="centro mudo pequeno" id="versao" style="margin-top:18px"></div><div id="atualizar"></div>' +
+      "</div></div></div>");
+    pinta("atualizar", avisoAtualizacao());
+    pinta("versao", versaoInstalada() ? "Versão 1." + versaoInstalada() + ' · <button class="link" data-a="procurarVersao">procurar atualização</button>' : "");
   }
 
   /* ---------------- Início ---------------- */
@@ -596,6 +610,7 @@
     }
     var ok = shell("inicio",
       '<div class="tela"><div class="rolagem"><div class="conteudo">' +
+      '<button class="link voltar-hub" data-a="hub">← Jogos</button>' +
       '<div class="logo"><span class="lupa">🔍</span><h1 class="titulo">CASO<span>.</span>ABERTO</h1><div><span class="slogan digita">um de vocês está mentindo</span></div></div>' +
       '<div id="atualizar"></div><div id="retomar"></div>' +
       '<label class="campo"><span>Seu nome de detetive</span><input id="nome" class="entrada" maxlength="18" autocomplete="off" placeholder="Ex.: Ruan"></label>' +
@@ -1727,7 +1742,9 @@
   // Chamado pelo Android quando alguém toca num link de convite (casoaberto://entrar?c=ABCD)
   window.abrirConvite = function (cod) {
     try { if (window.Android && Android.convite) Android.convite(); } catch (e) {}
-    cod = String(cod || "").toUpperCase().replace(/[^A-Z]/g, "");
+    cod = String(cod || "");
+    if (/^truco:/i.test(cod)) { location.href = "truco.html" + (sufixoUrl() ? sufixoUrl() + "&" : "?") + "sala=" + cod.slice(6).replace(/[^A-Za-z]/g, "").toUpperCase(); return; }
+    cod = cod.toUpperCase().replace(/[^A-Z]/g, "");
     if (cod.length !== 4) return;
     if (V && V.codigo === cod) { toast("Você já está na sala " + cod + "."); return; }
     if (V || modo) {
@@ -1739,6 +1756,7 @@
     entrarPorConvite(cod);
   };
   function entrarPorConvite(cod) {
+    ui.hub = false;
     if (!meuNome) {
       ui.shell = null; render();
       var c = document.getElementById("codigo"); if (c) c.value = cod;
@@ -1790,6 +1808,9 @@
     return '<div class="aviso-atualizar"><b>⬇️ Versão nova do jogo: 1.' + ui.novaVersao + '</b><div class="mudo pequeno">Você está na 1.' + versaoInstalada() + '. Atualize para ter as melhorias e correções. Seus amigos também precisam atualizar.</div>' +
       '<div class="linha-flex"><button class="btn prim pequeno" data-a="baixarVersao">Baixar e instalar</button><button class="btn fantasma pequeno" data-a="dispensarVersao">Depois</button></div></div>';
   }
+  acoes.hub = function () { ui.hub = true; ui.shell = null; render(); };
+  acoes.hubCaso = function () { ui.hub = false; ui.shell = null; render(); };
+  acoes.hubTruco = function () { location.href = "truco.html" + sufixoUrl(); };
   acoes.baixarVersao = function () {
     var url = "https://github.com/rhmwmdjg-wq/caso-aberto/releases/download/v1." + ui.novaVersao + "/CasoAberto.apk";
     if (window.Android && Android.abrirLink) Android.abrirLink(url); else window.open(url, "_blank");
@@ -1809,8 +1830,15 @@
       // tira o código do endereço, para não entrar de novo ao recarregar a página
       if (conv) try { history.replaceState(null, "", location.pathname + location.search.replace(/([?&])sala=[A-Za-z]{4}&?/, "$1").replace(/[?&]$/, "")); } catch (e) {}
     }
-    if (conv) { ui.shell = null; render(); entrarPorConvite(conv.toUpperCase()); return; }
+    if (conv && /^truco:/i.test(conv)) { window.abrirConvite(conv); return; }
+    if (conv) { ui.hub = false; ui.shell = null; render(); entrarPorConvite(conv.toUpperCase()); return; }
     var agora = Date.now(), lim = 3 * 3600e3;
+    // estava numa mesa de truco? volta para lá
+    if (!/[?&]hub=1/.test(location.search) && LS.get("jogo_atual", "") === "truco") {
+      var th = LS.get("tr_host", null), tc = LS.get("tr_cliente", null), ts = LS.get("tr_solo", null);
+      if ((th && agora - th.ts < lim) || (tc && agora - tc.ts < lim) || (ts && ts.estado && ts.estado.fase === "jogo" && agora - ts.ts < lim)) { location.replace("truco.html" + sufixoUrl()); return; }
+    }
+    ui.hub = !/[?&]caso=1/.test(location.search);
     var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null);
     if (host && host.estado && agora - host.ts < lim) {
       if (!meuNome) meuNome = "Anfitrião";
