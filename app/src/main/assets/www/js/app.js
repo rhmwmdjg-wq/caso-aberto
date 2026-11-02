@@ -317,6 +317,13 @@
   }
 
   // Os colegas robôs agem um de cada vez, com pausas, para parecer gente de verdade.
+  // Robôs agem no ritmo de gente: devagar enquanto alguém ainda está investigando,
+  // um pouco mais rápido quando só faltam eles (para ninguém ficar esperando à toa).
+  function atrasoRobo() {
+    var m = H.motor, p = m.s.partida;
+    var humanosAgindo = m.s.ordem.some(function (id) { return !m.ehRobo(id) && m.s.jogadores[id].online && p && (p.acoes[id] || 0) > 0; });
+    return humanosAgindo ? 12000 + Math.random() * 16000 : 5000 + Math.random() * 6000;
+  }
   function agendarRobos() {
     if (!H || H.tRobo) return;
     if (!H.motor.robosPendentes().length) return;
@@ -328,7 +335,7 @@
       var id = pend[Math.floor(Math.random() * pend.length)];
       if (!H.motor.agirRobo(id)) H.motor.s.partida.acoes[id] = 0;
       hostDifundir();
-    }, 2500 + Math.random() * 4500);
+    }, atrasoRobo());
   }
   function soloAdiantarRobos() {
     if (!H) return;

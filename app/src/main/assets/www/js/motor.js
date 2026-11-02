@@ -220,7 +220,7 @@
         var f = sortear(livres, rand);
         var loc = caso.locais.filter(function (l) { return l.nome === f.origem; })[0];
         this.plantar(id, f.texto, loc ? loc.icone + " " + loc.nome : f.origem);
-        this.roboFala(id, sortear(["Olhem o que eu achei. Isso muda tudo!", "Acabei de publicar uma pista importante no quadro.", "Achei uma coisa suspeita. Está no quadro.", "Gente, vejam o quadro. Acho que é isso!"], rand));
+        if (rand() < 0.55) this.roboFala(id, sortear(["Olhem o que eu achei. Isso muda tudo!", "Acabei de publicar uma pista importante no quadro.", "Achei uma coisa suspeita. Está no quadro.", "Gente, vejam o quadro. Acho que é isso!", "Mais uma pista no quadro.", "Coloquei no quadro. Alguém viu o mesmo?"], rand));
         return true;
       }
     }
@@ -253,7 +253,7 @@
         var chave = id + ">" + q.id;
         if (p.duvidas[chave]) return;
         var loc = caso.locais.filter(function (l) { return q.origem === l.icone + " " + l.nome; })[0];
-        if (loc && (vistos["l:" + loc.id] || 0) > 0 && rand() < 0.5) {
+        if (loc && (vistos["l:" + loc.id] || 0) > 0 && p.rodada >= 2 && rand() < 0.3) {
           p.duvidas[chave] = true;
           self.roboFala(id, sortear([
             "Estranho… eu examinei " + loc.nome + " e não vi nada disso que " + q.autor + " publicou.",
@@ -262,6 +262,20 @@
           ], rand));
         }
       });
+    }
+    // O Cúmplice robô também lança dúvida sobre pistas verdadeiras dos outros, para confundir
+    if (cumplice && p.rodada >= 2 && rand() < 0.35) {
+      var alvos = p.quadro.filter(function (q) { return !q.falsa && !q.novidade && q.autorId && q.autorId !== id; });
+      p.duvidas = p.duvidas || {};
+      alvos = alvos.filter(function (q) { return !p.duvidas[id + ">" + q.id]; });
+      if (alvos.length) {
+        var q = sortear(alvos, rand), loc2 = caso.locais.filter(function (l) { return q.origem === l.icone + " " + l.nome; })[0];
+        p.duvidas[id + ">" + q.id] = true;
+        self.roboFala(id, loc2 ? sortear([
+          "Estranho… eu examinei " + loc2.nome + " e não vi nada disso que " + q.autor + " publicou.",
+          "Hum. " + q.autor + " diz que achou isso em " + loc2.nome + ", mas eu passei lá e não vi."
+        ], rand) : sortear(["Não sei se dá para confiar na pista de " + q.autor + ".", "Essa história de " + q.autor + " não fecha para mim."], rand));
+      }
     }
     return true;
   };
@@ -279,8 +293,9 @@
       this.removerRobos();
       s.config.treino = false;
       var humanos = s.ordem.filter(function (i) { return s.jogadores[i].online; }).length;
-      if (humanos > MAX_JOGADORES - 1) return { ok: false, erro: "Com Cúmplice robô cabem até " + (MAX_JOGADORES - 1) + " jogadores." };
-      this.criarRobos(s.config.solo ? 3 : Math.max(1, 4 - humanos));
+      if (humanos > MAX_JOGADORES - 2) return { ok: false, erro: "Com Cúmplice robô cabem até " + (MAX_JOGADORES - 2) + " jogadores." };
+      // sempre pelo menos 2 robôs (normalmente 3), para o Cúmplice não ser óbvio
+      this.criarRobos(s.config.solo ? 3 : Math.min(MAX_JOGADORES - humanos, Math.max(3, 5 - humanos)));
     }
     var ids = s.ordem.filter(function (i) { return s.jogadores[i].online; });
     if (ids.length < this.minimoJogadores())
@@ -852,7 +867,7 @@
         return { id: c.id, titulo: c.titulo, subtitulo: c.subtitulo, dificuldade: c.dificuldade, capa: c.capa, ia: !!c.ia };
       }),
       minimo: this.minimoJogadores(),
-      maximo: s.config.treino ? Math.min(MAX_JOGADORES, this.esps.length) : s.config.robos ? MAX_JOGADORES - 1 : MAX_JOGADORES
+      maximo: s.config.treino ? Math.min(MAX_JOGADORES, this.esps.length) : s.config.robos ? MAX_JOGADORES - 2 : MAX_JOGADORES
     };
     if (!p) return v;
 
