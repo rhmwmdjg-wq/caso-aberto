@@ -32,7 +32,7 @@
 <main>
   <div class="lupa">🔍</div>
   <h1>CASO<span>.</span>ABERTO</h1>
-  <div class="mudo">Você foi convidado para investigar um caso</div>
+  <div class="mudo" id="convite">Você foi convidado para investigar um caso</div>
   <div class="codigo"><div class="mudo">Código da sala</div><b id="cod">····</b></div>
 
   <div class="mudo">Como você quer jogar?</div>
@@ -61,13 +61,20 @@
 (function () {
   var q = new URLSearchParams(location.search);
   var c = (q.get("c") || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+  var truco = q.get("j") === "truco", extra = truco ? "&j=truco" : "";
+  if (truco) {
+    document.title = "Convite · Truco";
+    document.getElementById("convite").textContent = "Você foi chamado para uma mesa de truco 🃏";
+    document.querySelector(".lupa").textContent = "🃏";
+    document.querySelector("h1").innerHTML = "TRUCO";
+  }
   var android = /Android/i.test(navigator.userAgent);
   document.getElementById("cod").textContent = c.length === 4 ? c : "····";
-  var base = location.href.split("?")[0] + "?c=" + c;
-  var intent = "intent://entrar?c=" + c + "#Intent;scheme=casoaberto;package=br.casoaberto.jogo;S.browser_fallback_url=" + encodeURIComponent(base + "&semapp=1") + ";end";
-  ["abrir", "abrir2"].forEach(function (id) { document.getElementById(id).href = android ? intent : "casoaberto://entrar?c=" + c; });
+  var base = location.href.split("?")[0] + "?c=" + c + extra;
+  var intent = "intent://entrar?c=" + c + extra + "#Intent;scheme=casoaberto;package=br.casoaberto.jogo;S.browser_fallback_url=" + encodeURIComponent(base + "&semapp=1") + ";end";
+  ["abrir", "abrir2"].forEach(function (id) { document.getElementById(id).href = android ? intent : "casoaberto://entrar?c=" + c + extra; });
   document.getElementById("naoTenho").href = base + "&semapp=1";
-  document.getElementById("web").href = "jogo/index.html" + (c.length === 4 ? "?sala=" + c : "");
+  document.getElementById("web").href = "jogo/" + (truco ? "truco.html" : "index.html") + (c.length === 4 ? "?sala=" + c : "");
   if (!android) { document.getElementById("comApp").hidden = true; document.getElementById("outro").hidden = false; return; }
   if (q.get("semapp")) { document.getElementById("comApp").hidden = true; document.getElementById("semApp").hidden = false; }
 })();
