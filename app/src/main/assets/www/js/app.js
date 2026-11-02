@@ -372,7 +372,7 @@
     C.tentativas++;
     if (!C.perdeuEm) C.perdeuEm = Date.now();
     // tenta por até 15 minutos, com pausas cada vez maiores
-    if (Date.now() - C.perdeuEm > 15 * 60e3) {
+    if (Date.now() - C.perdeuEm > 30 * 60e3) {
       sairParaInicio("Não deu para voltar à sala. Se o anfitrião ainda estiver jogando, toque em Voltar na tela inicial.");
       return;
     }
@@ -515,6 +515,8 @@
   function faixa() {
     if (conectado) return "";
     if (modo === "host") return '<div class="faixa-conexao">📡 Sem internet: reconectando a sala… Os amigos voltam sozinhos quando a conexão voltar.</div>';
+    if (C && C.rede && C.rede.servidorOk && C.rede.servidorOk())
+      return '<div class="faixa-conexao espera">⏳ Esperando o anfitrião voltar. O app dele precisa estar aberto. Você volta sozinho para a partida.</div>';
     return '<div class="faixa-conexao">📡 Conexão perdida: reconectando' + (C && C.tentativas > 1 ? " (tentativa " + C.tentativas + ")" : "") + '… <button class="link" data-a="reconectarAgora" style="color:#fff;text-decoration:underline;padding:0 4px">Tentar agora</button></div>';
   }
 
@@ -1019,7 +1021,7 @@
       conectarCliente(c.codigo, false, true);
     },
     esquecer: function () { LS.del("ca_host"); LS.del("ca_cliente"); ui.shell = null; render(); },
-    cancelar: function () { sairParaInicio(); },
+    cancelar: function () { if (modo === "cliente") LS.del("ca_cliente"); sairParaInicio(); },
     reconectarAgora: function () { if (C) { clearTimeout(C.tRecon); toast("Tentando reconectar…"); conectarCliente(C.codigo, true); } },
     regras: function () {
       abrirModal('<h2 class="titulo" style="font-size:24px;margin-bottom:12px">Como jogar</h2><div class="regras">' +
@@ -1371,8 +1373,29 @@
     }
   }, 5000);
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible" && modo === "cliente" && C && C.entrou && Date.now() - C.ultimo > 12000) clientePerdeu();
+    if (document.visibilityState !== "visible") return;
+    if (modo === "cliente" && C && C.entrou && Date.now() - C.ultimo > 6000) clientePerdeu();
+    // o anfitrião voltou do segundo plano: manda o estado atual para todo mundo na hora
+    if (modo === "host" && H) setTimeout(hostDifundir, 500);
   });
+  // a cada 4 s, atualiza a faixa de conexão (para mostrar "esperando o anfitrião" na hora certa)
+  setInterval(function () { if (!conectado && V) pinta("faixa", faixa()); }, 4000);
 
-  render();
+  // Ao abrir o app, volta sozinho para a sala em que a pessoa estava
+  (function voltarSozinho() {
+    var agora = Date.now(), lim = 3 * 3600e3;
+    var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null);
+    if (host && host.estado && agora - host.ts < lim) {
+      if (!meuNome) meuNome = "Anfitrião";
+      iniciarHost(host.codigo, host.estado);
+      setTimeout(function () { toast("Reabrindo a sua sala " + host.codigo + "…"); }, 300);
+      return;
+    }
+    if (cli && cli.codigo && meuNome && agora - cli.ts < lim) {
+      ui.carregando = "Voltando para a sala " + cli.codigo + "…";
+      conectarCliente(cli.codigo, false, true);
+      return;
+    }
+    render();
+  })();
 })();
