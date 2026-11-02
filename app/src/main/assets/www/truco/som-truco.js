@@ -94,13 +94,11 @@
   /* ---------------- Vozes dos personagens ---------------- */
   var vozesCustom = {};
   // Falas que existem para cada personagem (as gravações enviadas para o jogo)
-  var FALAS = {
-    mestre: { truco: "truco", selecao: "bordao", provoca: "provoca", reacao: "reacao" },
-    chapeu: { truco: "truco", selecao: "selecao" },
-    barba: { truco: "truco", selecao: "selecao", reacao: "reacao" },
-    morena: { selecao: "selecao" }
-  };
-  var ROTULOS = { truco: "Grito de TRUCO", selecao: "Bordão de apresentação", provoca: "Provocação depois do truco", reacao: "Reação" };   // jogadorId -> { palavra: dataURL } (gravadas pelo próprio jogador)
+  // Falas de cada malandro (arquivos em truco/falas/NOME-PALAVRA.mp3).
+  // Vazio por enquanto: as falas em português ainda vão ser gravadas.
+  // Ex.: mestre: { truco: "truco", seis: "seis", selecao: "selecao" }
+  var FALAS = {};
+  var ROTULOS = { truco: "Grito de TRUCO", seis: "Grito de SEIS", nove: "Grito de NOVE", doze: "Grito de DOZE", aceito: "Aceitando (Desce!)", corro: "Correndo (Corri!)", selecao: "Bordão de apresentação", provoca: "Provocação depois do truco", reacao: "Reação" };   // jogadorId -> { palavra: dataURL } (gravadas pelo próprio jogador)
   var tocandoVoz = null;
   function voz(personagem, palavra, jogadorId) {
     if (!cfg.vozes || !personagem || !palavra) return;
