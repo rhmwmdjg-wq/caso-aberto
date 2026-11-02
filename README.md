@@ -93,8 +93,7 @@ visual "Tavolagem Truco Raiz", baralhos com 4 cores de costas, batida forte, bor
 | Cartas, baralhos e cenários (desenhos) | `app/src/main/assets/www/truco/arte-truco.js` |
 | Efeitos, vozes e viola caipira | `app/src/main/assets/www/truco/som-truco.js` |
 | Fotos dos malandros | `app/src/main/assets/www/truco/img/` |
-| Falas dos malandros | `app/src/main/assets/www/truco/falas/*.mp3` |
+| Falas dos malandros (em português, a gravar) | `app/src/main/assets/www/truco/falas/NOME-PALAVRA.mp3` |
 
-Créditos: fotos e voz de referência (ElevenLabs) enviadas pelo dono do jogo; falas curtas em inglês
-de bancos de áudio gratuitos (Pixabay); fontes Anton e Work Sans (SIL Open Font License);
+Créditos: fotos enviadas pelo dono do jogo; fontes Anton e Work Sans (SIL Open Font License);
 ícones Material Symbols (Google, Apache 2.0). Cartas, cenários e música de viola feitos para este jogo, sem marcas.
