@@ -1,6 +1,10 @@
 package br.casoaberto.jogo;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -29,6 +33,9 @@ public class MainActivity extends Activity {
     private static final String ENDERECO = "https://appassets.androidplatform.net/assets/www/index.html";
     private WebView web;
     private String convitePendente = null;
+    private PermissionRequest pedidoMicrofone = null;
+    private ValueCallback<Uri[]> escolhaArquivos = null;
+    private static final int PEDIDO_MIC = 41, PEDIDO_ARQUIVO = 42;
 
     /** Lê o código da sala de um link de convite (casoaberto://entrar?c=ABCD). */
     private static String codigoDoConvite(Intent i) {
@@ -39,7 +46,9 @@ public class MainActivity extends Activity {
         if (c == null && u.getPathSegments().size() > 0) c = u.getLastPathSegment();
         if (c == null) return null;
         c = c.toUpperCase().replaceAll("[^A-Z]", "");
-        return c.length() == 4 ? c : null;
+        if (c.length() != 4) return null;
+        // convite para a mesa de truco: casoaberto://entrar?c=ABCD&j=truco
+        return "truco".equals(u.getQueryParameter("j")) ? "truco:" + c : c;
     }
 
     @Override
@@ -80,7 +89,39 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            // microfone: para gravar a voz do personagem no truco
+            @Override
+            public void onPermissionRequest(final PermissionRequest pedido) {
+                runOnUiThread(() -> {
+                    boolean querAudio = false;
+                    for (String r : pedido.getResources()) if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) querAudio = true;
+                    if (!querAudio) { pedido.deny(); return; }
+                    if (Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        pedido.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                    } else {
+                        pedidoMicrofone = pedido;
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, PEDIDO_MIC);
+                    }
+                });
+            }
+
+            // escolher arquivos: para as músicas do próprio celular no truco
+            @Override
+            public boolean onShowFileChooser(WebView w, ValueCallback<Uri[]> cb, FileChooserParams params) {
+                if (escolhaArquivos != null) escolhaArquivos.onReceiveValue(null);
+                escolhaArquivos = cb;
+                try {
+                    Intent i = params.createIntent();
+                    if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    startActivityForResult(i, PEDIDO_ARQUIVO);
+                } catch (Exception e) {
+                    escolhaArquivos = null;
+                    return false;
+                }
+                return true;
+            }
+        });
         web.addJavascriptInterface(new Ponte(), "Android");
 
         convitePendente = codigoDoConvite(getIntent());
@@ -170,6 +211,37 @@ public class MainActivity extends Activity {
                 moveTaskToBack(true);
             }
         });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int codigo, String[] permissoes, int[] resultados) {
+        super.onRequestPermissionsResult(codigo, permissoes, resultados);
+        if (codigo == PEDIDO_MIC && pedidoMicrofone != null) {
+            if (resultados.length > 0 && resultados[0] == PackageManager.PERMISSION_GRANTED) {
+                pedidoMicrofone.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            } else {
+                pedidoMicrofone.deny();
+            }
+            pedidoMicrofone = null;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int codigo, int resultado, Intent dados) {
+        super.onActivityResult(codigo, resultado, dados);
+        if (codigo != PEDIDO_ARQUIVO || escolhaArquivos == null) return;
+        Uri[] uris = null;
+        if (resultado == RESULT_OK && dados != null) {
+            if (dados.getClipData() != null) {
+                int n = dados.getClipData().getItemCount();
+                uris = new Uri[n];
+                for (int i = 0; i < n; i++) uris[i] = dados.getClipData().getItemAt(i).getUri();
+            } else if (dados.getData() != null) {
+                uris = new Uri[]{dados.getData()};
+            }
+        }
+        escolhaArquivos.onReceiveValue(uris);
+        escolhaArquivos = null;
     }
 
     @Override
