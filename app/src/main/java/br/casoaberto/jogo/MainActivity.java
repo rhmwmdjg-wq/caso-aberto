@@ -28,6 +28,19 @@ public class MainActivity extends Activity {
 
     private static final String ENDERECO = "https://appassets.androidplatform.net/assets/www/index.html";
     private WebView web;
+    private String convitePendente = null;
+
+    /** Lê o código da sala de um link de convite (casoaberto://entrar?c=ABCD). */
+    private static String codigoDoConvite(Intent i) {
+        if (i == null || i.getData() == null) return null;
+        Uri u = i.getData();
+        if (!"casoaberto".equals(u.getScheme())) return null;
+        String c = u.getQueryParameter("c");
+        if (c == null && u.getPathSegments().size() > 0) c = u.getLastPathSegment();
+        if (c == null) return null;
+        c = c.toUpperCase().replaceAll("[^A-Z]", "");
+        return c.length() == 4 ? c : null;
+    }
 
     @Override
     protected void onCreate(Bundle estado) {
@@ -70,6 +83,7 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient());
         web.addJavascriptInterface(new Ponte(), "Android");
 
+        convitePendente = codigoDoConvite(getIntent());
         setContentView(web);
         if (estado != null) {
             web.restoreState(estado);
@@ -78,8 +92,49 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        final String c = codigoDoConvite(intent);
+        if (c != null && web != null) {
+            convitePendente = c;
+            web.evaluateJavascript("window.abrirConvite && window.abrirConvite('" + c + "')", null);
+        }
+    }
+
     /** Funções do Android que o jogo pode chamar pelo JavaScript (window.Android). */
     private class Ponte {
+        /** Código de sala que veio de um link de convite (entregue uma vez só). */
+        @JavascriptInterface
+        public String convite() {
+            String c = convitePendente;
+            convitePendente = null;
+            return c == null ? "" : c;
+        }
+
+        /** Número da versão instalada (o mesmo número das versões no GitHub). */
+        @JavascriptInterface
+        @SuppressWarnings("deprecation")
+        public int versao() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+
+        /** Abre um endereço fora do jogo (navegador), por exemplo para baixar a versão nova. */
+        @JavascriptInterface
+        public void abrirLink(final String url) {
+            if (url == null || !url.startsWith("https://")) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception ignorado) { }
+            });
+        }
+
         @JavascriptInterface
         public void compartilhar(final String texto) {
             runOnUiThread(() -> {
