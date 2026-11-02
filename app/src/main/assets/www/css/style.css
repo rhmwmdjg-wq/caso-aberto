@@ -477,3 +477,4 @@ textarea.entrada { min-height: 90px; resize: vertical; }
 .local { position: relative; }
 .selo3d { position: absolute; top: 8px; right: 8px; font: 700 10px/1 system-ui, sans-serif; color: #1b1b1b; background: var(--latao); border-radius: 5px; padding: 3px 5px; letter-spacing: .5px; }
 .cena3d .c3-carregando { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; color: var(--mudo); font-family: "Elite", monospace; z-index: 1; }
+.faixa-conexao.espera { background: #6b5320; }
