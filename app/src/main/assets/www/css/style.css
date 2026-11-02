@@ -530,3 +530,16 @@ textarea.entrada { min-height: 90px; resize: vertical; }
 /* ---------- Atualização e convite ---------- */
 .aviso-atualizar { background: linear-gradient(180deg, #2f3a26, #26301f); border: 1px solid var(--verde); border-radius: var(--raio); padding: 12px 14px; margin-bottom: 14px; }
 .aviso-atualizar .linha-flex { margin-top: 10px; }
+
+/* ---------- Pedir prisão ---------- */
+.cartao.pedir-prisao { display: flex; gap: 12px; align-items: center; margin-top: 18px; border-color: var(--latao); }
+.cartao.pedir-prisao .btn { width: auto; flex-shrink: 0; }
+.cartao.afastado { border-color: var(--vermelho-escuro); background: rgba(143,35,28,.15); margin-top: 6px; }
+.prisao-pendente { background: linear-gradient(180deg, #4a1d18, #35140f); border: 1px solid var(--vermelho); border-radius: var(--raio); padding: 12px 14px; margin-bottom: 14px; animation: pulsa-borda 1.4s ease-in-out infinite; }
+.prisao-pendente .pp-cab { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.prisao-pendente .pp-tempo { font-weight: 700; color: var(--latao); }
+.prisao-pendente .pp-alvo { font-family: "Playfair", serif; font-weight: 900; font-size: 22px; margin: 2px 0; }
+.prisao-pendente .pp-placar { font-size: 13px; margin: 6px 0 10px; opacity: .9; }
+.prisao-pendente .linha-flex .btn { flex: 1; }
+.regras-prisao { margin-top: 14px; line-height: 1.5; }
+.cartao.preso { border-color: var(--verde); }
