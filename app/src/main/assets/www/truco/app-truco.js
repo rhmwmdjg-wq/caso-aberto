@@ -39,7 +39,8 @@
   if (!token) { token = gerarToken(); LS.set("ca_token", token); }
   var meuNome = LS.get("ca_nome", "");
   var V = null, modo = null, conectado = true, H = null, C = null;
-  var ui = { carregando: "", ultimoEvento: -1, chatVisto: 0, coberta: false, bolhas: {}, modal: null, ultimaFase: null };
+  var ui = { carregando: "", ultimoEvento: -1, chatVisto: 0, coberta: false, forte: false, bolhas: {}, modal: null, ultimaFase: null, tela: null };
+  A.definirTema(LS.get("tr_tema", "classico"));
 
   /* ================= ANFITRIÃO ================= */
   function iniciarHost(codigo, estadoSalvo, solo, tentativa) {
@@ -233,7 +234,7 @@
   /* ---------------- Vozes gravadas pelo jogador ---------------- */
   var PALAVRAS = [["truco", "TRUCO!"], ["seis", "SEIS!"], ["nove", "NOVE!"], ["doze", "DOZE!"], ["aceito", "Aceitar (Desce!)"], ["corro", "Correr (Corri!)"]];
   function vozesSalvas(p) { return LS.get("tr_voz_" + p, null) || {}; }
-  function meuPersonagem() { if (!V) return LS.get("tr_ultimo_personagem", null); var eu = V.jogadores.filter(function (j) { return j.id === V.meuId; })[0]; return eu && eu.personagem; }
+  function meuPersonagem() { var p; if (!V) p = LS.get("tr_ultimo_personagem", null); else { var eu = V.jogadores.filter(function (j) { return j.id === V.meuId; })[0]; p = eu && eu.personagem; } return PERS[p] ? p : null; }
   function minhasVozes() {
     var p = meuPersonagem();
     if (!p || LS.get("tr_usar_voz", true) === false) return null;
@@ -283,18 +284,18 @@
   }
   function telaVozes() {
     var p = meuPersonagem();
-    if (!p) { abrirModal('<h2 class="titulo">🎤 Gravar minha voz</h2><p>Escolha seu personagem na mesa primeiro. A voz gravada fica ligada a ele.</p><button class="btn prim" data-a="fechar">Entendi</button>'); return; }
+    if (!p) { abrirModal('<h2 class="tr-titulo">GRAVAR MINHA VOZ</h2><p>Escolha seu malandro na mesa primeiro. A voz gravada fica ligada a ele.</p><button class="tr-btn vermelho grande" data-a="fechar">ENTENDI</button>'); return; }
     var v = vozesSalvas(p), usar = LS.get("tr_usar_voz", true) !== false;
-    var h = '<h2 class="titulo">🎤 Voz de ' + esc(PERS[p].nome) + "</h2><p class=\"mudo pequeno\">Grite com vontade! Cada gravação tem até 2,5 segundos. Os amigos da mesa ouvem a sua voz quando você pedir truco.</p>";
+    var h = '<h2 class="tr-titulo">VOZ DE ' + esc(PERS[p].nome.toUpperCase()) + "</h2><p class=\"mudo pequeno\">Grite com vontade! Cada gravação tem até 2,5 segundos. Os amigos da mesa ouvem a sua voz quando você gritar.</p>";
     h += '<label class="linha-chave"><span>Usar minha voz no jogo</span><button class="chave' + (usar ? " on" : "") + '" data-a="usarVoz"></button></label>';
     PALAVRAS.forEach(function (w) {
       var tem = !!v[w[0]], gravandoEsta = ui.gravando === w[0];
-      h += '<div class="voz-linha"><b>' + w[1] + '</b><span class="mudo pequeno">' + (tem ? "sua voz" : "voz padrão") + "</span>" +
-        '<button class="btn pequeno ' + (gravandoEsta ? "prim pulsa" : "") + '" data-a="gravar" data-p="' + w[0] + '">' + (gravandoEsta ? "⏹ Parar" : "🎤 Gravar") + "</button>" +
-        '<button class="btn pequeno fantasma" data-a="ouvir" data-p="' + w[0] + '">▶</button>' +
-        (tem ? '<button class="btn pequeno fantasma" data-a="apagarVoz" data-p="' + w[0] + '">🗑</button>' : "") + "</div>";
+      h += '<div class="voz-linha"><b>' + w[1] + '</b><span class="mudo pequeno">' + (tem ? "sua voz" : S.temFala(p, w[0]) ? "voz do jogo" : "sem voz") + "</span>" +
+        '<button class="tr-mini ' + (gravandoEsta ? "vermelho pulsa" : "ouro") + '" data-a="gravar" data-p="' + w[0] + '">' + (gravandoEsta ? "PARAR" : window.ic("mic") + " GRAVAR") + "</button>" +
+        '<button class="tr-mini" data-a="ouvir" data-p="' + w[0] + '">' + window.ic("play_arrow") + "</button>" +
+        (tem ? '<button class="tr-mini" data-a="apagarVoz" data-p="' + w[0] + '">' + window.ic("close") + "</button>" : "") + "</div>";
     });
-    h += '<button class="btn fantasma" data-a="fechar" style="margin-top:12px">Pronto</button>';
+    h += '<button class="tr-btn fantasma grande" data-a="fechar" style="margin-top:12px">PRONTO</button>';
     ui.modal = "vozes";
     abrirModal(h);
   }
@@ -317,6 +318,7 @@
       if (v.fase === "jogo" && antes.fase === "lobby") { fecharModal(); S.iniciarMusica(); }
       if (v.fase === "lobby") fecharModal();
     }
+    if (v.mao && (!antes || !antes.mao || antes.mao.vez !== v.mao.vez || antes.mao.num !== v.mao.num || (antes.mao.pedido && !v.mao.pedido))) ui.vezDesde = Date.now();
     // é a minha vez?
     if (v.mao && v.fase === "jogo" && v.mao.vez === v.meuLugar && !v.mao.pedido && !v.mao.fim && (!antes || !antes.mao || antes.mao.vez !== v.meuLugar || antes.mao.pedido)) { S.fx("vez"); vibrar(40); }
     if (v.mao && v.mao.pedido && v.mao.possoResponder && !(antes && antes.mao && antes.mao.pedido && antes.mao.pedido.valor === v.mao.pedido.valor)) vibrar(250);
@@ -327,10 +329,21 @@
     var as = v.assentos[e.lugar];
     switch (e.tipo) {
       case "distribuir": S.fx("distribuir", 12); ui.animDistribuir = Date.now(); break;
-      case "jogou": S.fx("jogar"); ui.animJogada = { lugar: e.lugar, t: Date.now() }; break;
+      case "jogou":
+        var estalo = e.forte && LS.get("tr_estalo", true) !== false;
+        S.fx(e.forte ? "estalo" : "jogar"); ui.animJogada = { lugar: e.lugar, t: Date.now(), forte: estalo };
+        if (estalo) { ui.tremer = Date.now(); vibrar(120); }
+        break;
+      case "bordao":
+        ui.bolhas[e.lugar] = { texto: e.texto, t: Date.now(), ouro: as && as.personagem === "morena" };
+        if (as && Math.random() < 0.5) S.voz(as.personagem, "reacao", as.id);
+        setTimeout(render, 3900);
+        break;
       case "grito":
         S.fx("murro");
-        if (as) S.voz(as.personagem, e.palavra, as.id);
+        var falou = as ? S.voz(as.personagem, e.palavra, as.id) : false;
+        if (!falou) S.fx("alarde");
+        if (["truco", "seis", "nove", "doze"].indexOf(e.palavra) >= 0) { ui.gritao = { lugar: e.lugar, texto: e.texto, t: Date.now() }; setTimeout(render, 2400); }
         // o Mestre Valdo ainda provoca depois de pedir truco
         if (as && as.personagem === "mestre" && e.palavra === "truco" && !(S.vozesCustom[as.id] && S.vozesCustom[as.id].truco)) setTimeout(function () { S.voz("mestre", "provoca"); }, 750);
         ui.bolhas[e.lugar] = { texto: e.texto, t: Date.now(), grito: true };
@@ -364,8 +377,10 @@
   }
 
   /* ================= Renderização ================= */
+  var I = window.ic;
+  var BORDOES = ["TRUCO, LADRÃO!", "SEIS NA CARROÇA!", "CAI PRA DENTRO!", "TEM GATO AÍ?", "VEM PRA FESTA, MARRECO!", "AQUI É LEITURA, NÃO É SORTE!", "TÁ COM MEDO?", "SEGURA, PARCEIRO!"];
   function shell(nome, html) {
-    if (ui.shell !== nome) { $app.innerHTML = html; ui.shell = nome; return true; }
+    if (ui.shell !== nome) { $app.innerHTML = html; ui.shell = nome; var r = $app.querySelector(".rolagem"); if (r) r.scrollTop = 0; return true; }
     return false;
   }
   function pinta(id, html) {
@@ -377,35 +392,43 @@
   }
   function faixa() {
     if (conectado) return "";
-    if (modo === "host") return '<div class="faixa-conexao">📡 Sem internet: reconectando a mesa…</div>';
-    return '<div class="faixa-conexao">📡 Conexão perdida: voltando para a mesa…</div>';
+    if (modo === "host") return '<div class="tr-faixa">📡 Sem internet: reconectando a mesa…</div>';
+    return '<div class="tr-faixa">📡 Conexão perdida: voltando para a mesa…</div>';
   }
+  function nn(n) { return ("0" + n).slice(-2); }
+  function pnome(id) { return (PERS[id] || {}).nome || "?"; }
+  function curto(nome) { return String(nome || "").replace(/^Robô /, "🤖 ").split(" ").slice(0, 2).join(" "); }
   function render() {
     if (!V) {
-      if (ui.carregando) { shell("carregando", '<div class="tela centro-tela"><div class="girando"></div><div id="msgc"></div><button class="link" data-a="cancelar">Cancelar</button></div>'); pinta("msgc", esc(ui.carregando)); }
+      if (ui.carregando) { shell("carregando", '<div class="tela tr-carregando"><div class="girando"></div><div id="msgc"></div><button class="link" data-a="cancelar">Cancelar</button></div>'); pinta("msgc", esc(ui.carregando)); }
+      else if (ui.tela === "baralhos") renderBaralhos();
       else renderInicio();
       return;
     }
+    if (ui.tela === "personagens") return renderPersonagens();
+    if (ui.tela === "baralhos") return renderBaralhos();
     if (V.fase === "lobby") renderLobby();
     else renderMesa();
   }
+  function fundoCena() { return '<div class="tr-cena">' + A.fundo(V ? V.config.cenario : "rancho") + '<div class="tr-escurece"></div></div>'; }
 
   /* ---------------- Início ---------------- */
   function renderInicio() {
     var host = LS.get("tr_host", null), cli = LS.get("tr_cliente", null), solo = LS.get("tr_solo", null), agora = Date.now(), lim = 6 * 3600e3;
     var ret = "";
-    if (host && host.estado && agora - host.ts < lim) ret = '<div class="retomar">Você tinha uma mesa aberta (<b>' + esc(host.codigo) + '</b>).<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarHost">Reabrir</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
-    else if (solo && solo.estado && agora - solo.ts < lim && solo.estado.fase === "jogo") ret = '<div class="retomar">Continuar a partida com os robôs?<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarSolo">Continuar</button><button class="btn fantasma pequeno" data-a="esquecerSolo">Descartar</button></div></div>';
-    else if (cli && agora - cli.ts < lim) ret = '<div class="retomar">Voltar para a mesa <b>' + esc(cli.codigo) + '</b>?<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarCliente">Voltar</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
-    var novo = shell("inicio", '<div class="tela inicio-truco">' + '<div class="cenario">' + A.fundo("rancho") + '</div><div class="rolagem"><div class="conteudo">' +
-      '<button class="link voltar-jogos" data-a="jogos">← Jogos</button>' +
-      '<div class="logo-truco"><div class="cartas-logo">' + A.carta("4P") + A.carta("7C") + A.carta("AE") + '</div><h1>TRUCO</h1><div class="sub">do Norte de Minas</div></div>' +
+    if (host && host.estado && agora - host.ts < lim) ret = '<div class="tr-cartao tr-retomar"><div>Você tinha uma mesa aberta (<b>' + esc(host.codigo) + '</b>).</div><div class="tr-linha"><button class="tr-btn ouro" data-a="retomarHost">Reabrir</button><button class="tr-btn fantasma" data-a="esquecer">Descartar</button></div></div>';
+    else if (solo && solo.estado && agora - solo.ts < lim && solo.estado.fase === "jogo") ret = '<div class="tr-cartao tr-retomar"><div>Continuar a partida com os robôs?</div><div class="tr-linha"><button class="tr-btn ouro" data-a="retomarSolo">Continuar</button><button class="tr-btn fantasma" data-a="esquecerSolo">Descartar</button></div></div>';
+    else if (cli && agora - cli.ts < lim) ret = '<div class="tr-cartao tr-retomar"><div>Voltar para a mesa <b>' + esc(cli.codigo) + '</b>?</div><div class="tr-linha"><button class="tr-btn ouro" data-a="retomarCliente">Voltar</button><button class="tr-btn fantasma" data-a="esquecer">Descartar</button></div></div>';
+    var novo = shell("inicio", '<div class="tela tr-tela">' + '<div class="tr-cena">' + A.fundo("rancho") + '<div class="tr-escurece forte"></div></div><div class="rolagem"><div class="tr-conteudo">' +
+      '<button class="tr-voltar" data-a="jogos">' + I("arrow_back") + " Jogos</button>" +
+      '<div class="tr-logo"><div class="cartas-logo">' + A.carta("4P") + A.carta("7C") + A.carta("AE") + '</div><h1>TRUCO</h1><div class="sub">do Norte de Minas · mesa raiz 3D</div></div>' +
       '<div id="retomar"></div>' +
-      '<label class="campo"><span>Seu nome</span><input id="nome" class="entrada" maxlength="18" autocomplete="off" placeholder="Ex.: Ruan"></label>' +
-      '<div class="pilha"><button class="btn prim" data-a="criar">🃏 Criar mesa</button><button class="btn fantasma" data-a="solo">🤖 Jogar com robôs</button></div>' +
-      '<div class="ou">ou entre com o código</div>' +
-      '<div class="linha-flex"><input id="codigo" class="entrada codigo" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="····"><button class="btn latao" data-a="entrar" style="width:auto">Entrar</button></div>' +
-      '<div class="centro" style="margin-top:20px"><button class="link" data-a="regras">📖 Regras</button> · <button class="link" data-a="som">🎵 Som</button> · <button class="link" data-a="vozes">🎤 Minha voz</button></div>' +
+      '<label class="tr-campo"><span>SEU NOME DE MALANDRO</span><input id="nome" class="tr-entrada" maxlength="18" autocomplete="off" placeholder="Ex.: Ruan"></label>' +
+      '<button class="tr-btn vermelho grande" data-a="criar">' + I("groups") + " CRIAR MESA</button>" +
+      '<button class="tr-btn fantasma grande" data-a="solo">' + I("smart_toy") + " JOGAR COM ROBÔS</button>" +
+      '<div class="tr-ou">ou entre com o código</div>' +
+      '<div class="tr-linha"><input id="codigo" class="tr-entrada codigo" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="····"><button class="tr-btn ouro" data-a="entrar">ENTRAR</button></div>' +
+      '<div class="tr-links"><button data-a="regras">' + I("casino") + " Regras</button><button data-a=\"baralhos\">" + I("style") + " Baralhos</button><button data-a=\"som\">" + I("volume_up") + " Som</button></div>" +
       "</div></div></div>");
     if (novo) {
       var n = document.getElementById("nome"); n.value = meuNome;
@@ -426,183 +449,250 @@
   }
 
   /* ---------------- Sala (antes de começar) ---------------- */
+  function vaga(l, nos) {
+    var a = V.assentos[l];
+    if (!a) {
+      return '<div class="tr-vaga livre"><div class="ic-grande">' + I("person_add") + '</div><b>VAGA ABERTA</b>' +
+        (V.meuLugar !== l ? '<button class="tr-mini" data-a="sentar" data-l="' + l + '">Sentar aqui</button>' : "") +
+        (V.souHost ? '<button class="tr-mini ouro" data-a="robos">' + I("smart_toy") + " Pôr bot</button>" : "") + "</div>";
+    }
+    var host = a.id === V.hostId, eu = a.id === V.meuId;
+    return '<div class="tr-vaga' + (eu ? " eu" : "") + '">' + (host ? '<span class="tag-host">HOST</span>' : "") + (a.robo ? '<span class="tag-bot">BOT</span>' : "") +
+      (a.robo && V.souHost ? '<button class="tr-x" data-a="tirarRobo" data-l="' + l + '">' + I("close") + "</button>" : "") +
+      '<div class="foto">' + (a.personagem ? A.avatar(a.personagem) : '<div class="sem-foto">?</div>') + "</div>" +
+      "<b>" + esc(curto(a.nome)) + (eu ? " (você)" : "") + "</b>" +
+      '<span class="estado' + (a.personagem ? " ok" : "") + '">' + (a.personagem ? "● " + esc(pnome(a.personagem)) : "○ escolhendo malandro…") + "</span>" +
+      (eu ? '<button class="tr-mini ouro" data-a="abrirPersonagens">' + I("swords") + " Trocar malandro</button>" : "") + "</div>";
+  }
   function renderLobby() {
-    shell("lobby", '<div class="tela"><div id="faixa"></div><div class="cenario" id="cen"></div><div class="rolagem" id="corpo"></div><div class="base" id="base"></div></div>');
+    shell("lobby", '<div class="tela tr-tela">' + '<div class="tr-cena" id="cen"></div><div id="faixa"></div><div class="rolagem" id="corpo"></div><div class="tr-base" id="base"></div></div>');
     pinta("faixa", faixa());
-    pinta("cen", A.fundo(V.config.cenario));
-    var h = '<div class="conteudo">';
-    if (H && H.solo) h += '<div class="cartao centro"><b>🤖 Partida com robôs</b><div class="mudo pequeno">Escolha seu personagem, o cenário e a regra. Os robôs completam a mesa.</div></div>';
-    else h += '<div class="cartao codigo-sala"><div class="rot">CÓDIGO DA MESA</div><div class="cod">' + esc(V.codigo) + '</div><button class="btn latao" data-a="convidar">📨 Convidar amigos</button></div>';
-    // lugares
-    h += '<h2 class="secao">A mesa</h2><div class="mesa-lobby">';
-    [0, 1, 2, 3].forEach(function (l) {
-      var a = V.assentos[l], dupla = l % 2 === 0 ? "d1" : "d2";
-      h += '<div class="lugar ' + dupla + ' l' + l + '">';
-      if (!a) h += '<button class="vazio" data-a="sentar" data-l="' + l + '">+ Sentar aqui</button>';
-      else {
-        h += (a.personagem ? A.avatar(a.personagem) : '<div class="sem-pers">?</div>') + '<div class="n">' + (a.robo ? "🤖 " : "") + esc(a.nome) + (a.id === V.meuId ? " (você)" : "") + "</div>" +
-          '<div class="p mudo pequeno">' + (a.personagem ? esc(PERS[a.personagem].nome) : "escolhendo…") + "</div>";
-        if (a.robo && V.souHost) h += '<button class="x" data-a="tirarRobo" data-l="' + l + '">×</button>';
-        else if (a.robo) h += "";
-        else if (!a.robo && a.id !== V.meuId && V.meuLugar >= 0) h += "";
-      }
-      h += "</div>";
-    });
-    h += '<div class="rotulo-dupla d1">Dupla 1</div><div class="rotulo-dupla d2">Dupla 2</div><div class="mesa-centro">' + A.decoracaoMesa() + "</div></div>";
-    if (V.souHost && V.assentos.indexOf(null) >= 0) h += '<button class="btn fantasma" data-a="robos">🤖 Completar a mesa com robôs</button>';
-    h += '<div class="mudo pequeno centro" style="margin-top:6px">Quem senta em frente é o seu parceiro. Toque num lugar vazio para trocar de lugar.</div>';
-    // personagens
-    var meu = meuPersonagem();
-    h += '<h2 class="secao">Seu personagem</h2><div class="grade-pers">';
-    Truco.PERSONAGENS.forEach(function (p) {
-      var dono = V.jogadores.filter(function (j) { return j.personagem === p.id; })[0];
-      var meuP = meu === p.id, ocupado = dono && !meuP;
-      h += '<button class="pers' + (A.temFoto(p.id) ? " foto" : "") + (meuP ? " sel" : "") + (ocupado ? " ocupado" : "") + '" data-a="personagem" data-id="' + p.id + '"' + (ocupado ? " disabled" : "") + ">" + (A.temFoto(p.id) ? A.retrato(p.id) : A.avatar(p.id)) +
-        '<div class="n">' + esc(p.nome) + '</div><div class="d">' + (ocupado ? "com " + esc(dono.nome) : esc(p.desc)) + "</div>" +
-        '<span class="ouvir" data-a="ouvirPers" data-id="' + p.id + '">🔊</span></button>';
-    });
-    h += '</div><div class="centro"><button class="link" data-a="vozes">🎤 Gravar a minha voz para o meu personagem</button></div>';
-    // regras da mesa
-    var cfg = V.config;
-    h += '<h2 class="secao">Regras da mesa' + (V.souHost ? "" : ' <span class="mudo pequeno">(o anfitrião escolhe)</span>') + "</h2>";
-    h += '<div class="segmento">' + [["mineiro", "Truco Mineiro"], ["paulista", "Truco Paulista"]].map(function (r) { return '<button data-a="regra" data-v="' + r[0] + '" class="' + (cfg.regra === r[0] ? "sel" : "") + '"' + (V.souHost ? "" : " disabled") + ">" + r[1] + "</button>"; }).join("") + "</div>";
-    h += '<div class="mudo pequeno" style="margin:6px 0 12px">' + (cfg.regra === "paulista" ? "Manilha muda a cada mão (a carta seguinte à vira). Mão vale 1; truco 3, seis, nove e doze. Mão de 11." : "Manilhas fixas: zap (4♣), 7♥, espadilha (A♠) e 7♦. Mão vale 2; truco 4, seis 6, nove 10 e doze 12. Mão de 10.") + "</div>";
-    h += '<h2 class="secao">Cenário</h2><div class="grade-cen">';
-    Object.keys(A.CENARIOS).forEach(function (k) { var c = A.CENARIOS[k]; h += '<button class="cen' + (cfg.cenario === k ? " sel" : "") + '" data-a="cenario" data-v="' + k + '"' + (V.souHost ? "" : " disabled") + '><span class="ic">' + c.icone + '</span><b>' + esc(c.nome) + '</b><span class="mudo pequeno">' + esc(c.desc) + "</span></button>"; });
-    h += '</div><h2 class="secao">Tentos</h2><div class="segmento">' + [["milho", "🌽 Grão de milho"], ["feijao", "⚪ Feijão branco"]].map(function (t) { return '<button data-a="tento" data-v="' + t[0] + '" class="' + (cfg.tento === t[0] ? "sel" : "") + '"' + (V.souHost ? "" : " disabled") + ">" + t[1] + "</button>"; }).join("") + "</div>";
-    h += '<div class="centro" style="margin:18px 0 8px"><button class="link" data-a="regras">📖 Regras</button> · <button class="link" data-a="som">🎵 Som</button> · <button class="link" data-a="sair">Sair da mesa</button></div></div>';
+    pinta("cen", A.fundo(V.config.cenario) + '<div class="tr-escurece forte"></div>');
+    var cfg = V.config, ocupados = V.assentos.filter(Boolean).length, solo = H && H.solo;
+    var host = V.jogadores.filter(function (j) { return j.id === V.hostId; })[0] || {};
+    var meuT = V.meuLugar >= 0 ? V.meuLugar % 2 : 0;
+    var h = '<div class="tr-conteudo">';
+    h += '<div class="tr-sobretitulo"><span class="ponto"></span>' + (solo ? "MESA COM ROBÔS" : "MESA PRIVADA #" + esc(V.codigo)) + '<span class="dir">' + I("groups") + " " + ocupados + "/4 JOGADORES</span></div>";
+    h += '<div class="tr-cartao tr-mesa-info"><div class="tr-linha cabeca"><h2>MESA DO ' + esc(String(host.nome || "").toUpperCase()) + '</h2><span class="tag-aberta">● ' + (solo ? "TREINO" : "ABERTA") + "</span></div>" +
+      '<div class="sub">Criada por ' + esc(host.nome || "") + " · Valendo cerveja &amp; honra</div>" +
+      '<div class="tags"><span>' + I("sports_esports") + " " + (cfg.regra === "paulista" ? "Truco Paulista" : "Truco Mineiro") + "</span><span>" + I("trophy") + " 12 Tentos</span><span>" + I("mic") + " Voz ativa</span><span>" + I("style") + " " + esc(A.TEMAS[A.tema()].nome) + "</span></div></div>";
+    if (!solo) {
+      h += '<div class="tr-cartao tr-codigo"><div class="tr-linha cabeca"><div class="ic-chave">' + I("lock") + '</div><div class="txt"><b>CÓDIGO DE ENTRADA</b><span>Compartilhe pra fechar a 4ª ponta</span></div></div>' +
+        '<div class="caixa-cod"><div><small>CÓDIGO SECRETO</small><div class="cod">' + esc(V.codigo) + '</div></div><button class="tr-btn ouro" data-a="copiarCodigo">' + I("content_copy") + " COPIAR</button></div>" +
+        '<div class="tr-linha"><button class="tr-btn verde" data-a="mandarZap">' + I("chat") + ' MANDA NO ZAP</button><button class="tr-btn escuro" data-a="convidar">' + I("share") + " OUTROS APPS</button></div></div>";
+    }
+    h += '<div class="tr-secao"><h3>' + I("swords") + ' A MESA DE EMBATE</h3><span class="dir">DUPLA FIXA</span></div>';
+    h += '<div class="tr-feltro-lobby"><div class="dupla-cab"><span class="ponto ouro"></span>DUPLA NÓS' + (meuT === 0 ? "" : "") + '<span class="dir">' + [meuT, meuT + 2].filter(function (l) { var a = V.assentos[l]; return a && a.personagem; }).length + "/2 PRONTOS</span></div>" +
+      '<div class="duas">' + vaga(meuT, true) + vaga(meuT + 2, true) + '</div><div class="vs"><i></i><span>VS</span><i></i></div>' +
+      '<div class="dupla-cab"><span class="ponto rosa"></span>DUPLA ELES (DESAFIANTES)<span class="dir">' + (V.assentos[1 - meuT] && V.assentos[3 - meuT] ? "COMPLETA" : "FALTA " + [1 - meuT, 3 - meuT].filter(function (l) { return !V.assentos[l]; }).length) + "</span></div>" +
+      '<div class="duas">' + vaga(1 - meuT, false) + vaga(3 - meuT, false) + "</div></div>";
+    // regras
+    var dis = V.souHost ? "" : " disabled";
+    h += '<div class="tr-secao"><h3>' + I("settings") + " REGRAS DO BOTECO</h3><span class=\"dir\">" + (V.souHost ? "Você manda aqui" : "O host escolhe") + "</span></div><div class=\"tr-cartao tr-regras\">";
+    h += '<div class="regra"><div class="ic-r">' + I("casino") + '</div><div class="txt"><b>Modalidade</b><span>' + (cfg.regra === "paulista" ? "Vira define as 4 manilhas" : "Manilhas fixas: zap, copas, espadilha e pica-fumo") + '</span></div><div class="alterna"><button data-a="regra" data-v="paulista" class="' + (cfg.regra === "paulista" ? "sel" : "") + '"' + dis + '>PAULISTA</button><button data-a="regra" data-v="mineiro" class="' + (cfg.regra === "mineiro" ? "sel" : "") + '"' + dis + ">MINEIRO</button></div></div>";
+    h += '<div class="regra"><div class="ic-r">' + I("style") + '</div><div class="txt"><b>Baralho equipado</b><span>' + esc(A.TEMAS[A.tema()].nome) + ' (só no seu celular)</span></div><button class="tr-quad" data-a="baralhos">' + I("style") + "</button></div>";
+    h += '<div class="regra"><div class="ic-r">' + I("sports_bar") + '</div><div class="txt"><b>Tentos</b><span>Grão que marca os pontos</span></div><div class="alterna"><button data-a="tento" data-v="milho" class="' + (cfg.tento === "milho" ? "sel" : "") + '"' + dis + '>MILHO</button><button data-a="tento" data-v="feijao" class="' + (cfg.tento === "feijao" ? "sel" : "") + '"' + dis + ">FEIJÃO</button></div></div>";
+    h += '<div class="regra"><div class="ic-r">' + I("volume_up") + '</div><div class="txt"><b>Estalo de mesa 3D</b><span>Faísca e tremida na batida forte</span></div><button class="chave' + (LS.get("tr_estalo", true) ? " on" : "") + '" data-a="estalo"></button></div>';
+    h += '<div class="cenarios">' + Object.keys(A.CENARIOS).map(function (k) { var c = A.CENARIOS[k]; return '<button class="' + (cfg.cenario === k ? "sel" : "") + '" data-a="cenario" data-v="' + k + '"' + dis + ">" + c.icone + " " + esc(c.nome) + "</button>"; }).join("") + "</div></div>";
+    // resenha
+    var msgs = V.chat.filter(function (c) { return !c.sistema; }).slice(-4);
+    h += '<div class="tr-secao"><h3>' + I("chat") + ' RESENHA DO LOBBY</h3><span class="dir verde">' + I("record_voice_over") + " CANAL ABERTO</span></div><div class=\"tr-cartao tr-resenha\">" +
+      (msgs.length ? msgs.map(function (c) { var j = V.jogadores.filter(function (x) { return x.id === c.autorId; })[0]; return '<div class="msg"><div class="mini-av">' + (j && j.personagem ? A.avatar(j.personagem) : "") + '</div><div><b>' + esc(c.autor) + (c.autorId === V.hostId ? " (Host)" : "") + "</b><p>" + esc(c.texto) + "</p></div></div>"; }).join("") : '<div class="vazio">Ninguém falou nada ainda. Puxa a resenha!</div>') +
+      '<div class="chips">' + ["Bota o chopp pra gelar!", "Truco na primeira!", "Bora que tá cedo!"].map(function (f) { return '<button data-a="frase" data-t="' + esc(f) + '">"' + esc(f) + '"</button>'; }).join("") + "</div>" +
+      '<div class="tr-linha"><input id="chatLobby" class="tr-entrada" maxlength="200" placeholder="Manda a resenha…" autocomplete="off"><button class="tr-btn ouro icone" data-a="enviarChatLobby">' + I("send") + "</button></div></div>";
+    h += '<div class="tr-links"><button data-a="regras">' + I("casino") + " Regras</button><button data-a=\"som\">" + I("volume_up") + " Som</button><button data-a=\"vozes\">" + I("mic") + " Minha voz</button></div></div>";
     pinta("corpo", h);
-    var pronto = V.assentos.every(function (a) { return a && a.personagem; });
-    pinta("base", V.souHost ? '<button class="btn prim" data-a="iniciar"' + (pronto ? "" : " disabled") + ">🃏 " + (pronto ? "Começar a partida" : "Falta gente ou personagem") + "</button>"
-      : '<div class="centro mudo">Esperando o anfitrião começar…</div>');
+    var ci = document.getElementById("chatLobby");
+    if (ci && !ci._ok) { ci._ok = true; ci.addEventListener("keydown", function (e) { if (e.key === "Enter") acoes.enviarChatLobby(); }); }
+    var falta = V.assentos.filter(function (a) { return !a; }).length, semP = V.assentos.filter(function (a) { return a && !a.personagem && !a.robo; }).length;
+    var pode = !falta && !semP;
+    pinta("base", '<button class="tr-base-btn" data-a="sair">' + I("logout") + "<span>SAIR</span></button>" +
+      (V.souHost ? '<button class="tr-base-btn" data-a="robos"' + (falta ? "" : " disabled") + ">" + I("smart_toy") + "<span>PÔR BOT</span></button>" +
+        '<button class="tr-btn vermelho comecar" data-a="iniciar"' + (pode ? "" : " disabled") + ">" + I("play_arrow") + "<span><b>COMEÇAR</b><small>" + (pode ? "Bora pro jogo!" : falta ? "Falta " + falta + " ou bot" : "Falta escolher malandro") + "</small></span></button>"
+        : '<div class="tr-espera">' + I("hourglass_top") + " Esperando o host começar…</div>"));
+  }
+
+  /* ---------------- Seleção de malandros ---------------- */
+  function renderPersonagens() {
+    shell("personagens", '<div class="tela tr-tela"><div class="tr-cena" id="cen"></div><div class="tr-cab" id="cab"></div><div class="rolagem" id="corpo"></div><div class="tr-base" id="base"></div></div>');
+    pinta("cen", A.fundo(V.config.cenario) + '<div class="tr-escurece forte"></div>');
+    var meu = meuPersonagem(), foco = ui.foco || meu || Truco.PERSONAGENS[0].id, P = PERS[foco];
+    pinta("cab", '<button class="tr-ic" data-a="voltarLobbyTela">' + I("arrow_back") + '</button><div class="t"><small>MESA · TRUCO</small><b>SELEÇÃO DE MALANDROS</b></div><span class="tag-tentos">' + I("trophy") + " 12 TENTOS</span>");
+    var dono = V.jogadores.filter(function (j) { return j.personagem === foco && j.id !== V.meuId; })[0];
+    var h = '<div class="tr-conteudo">';
+    h += '<div class="tr-heroi"><div class="foto">' + A.retrato(foco) + '</div><div class="vel"></div><span class="tag-lenda">' + I("stars") + " MALANDRO LENDÁRIO</span>" +
+      '<div class="txt"><small>' + esc(P.titulo.toUpperCase()) + "</small><h2>" + esc(P.nome.toUpperCase()) + "</h2><p>" + esc(P.desc) + "</p></div></div>";
+    h += '<div class="tr-stats"><div><small>NAIPE FAVORITO</small><b>' + esc(P.naipe) + '</b></div><div><small>BLEFE LENDÁRIO</small><b class="vermelho">' + P.blefe + '%</b></div><div><small>RESENHA / HORA</small><b class="verde">' + P.resenha + " dB</b></div></div>";
+    h += '<div class="tr-secao"><h3>' + I("groups") + ' MESA DOS JOGADORES</h3><span class="dir">' + Truco.PERSONAGENS.length + " MALANDROS</span></div><div class=\"tr-carrossel\">";
+    Truco.PERSONAGENS.forEach(function (p) {
+      var d = V.jogadores.filter(function (j) { return j.personagem === p.id; })[0];
+      h += '<button class="mini-pers' + (p.id === foco ? " foco" : "") + (p.id === meu ? " meu" : "") + '" data-a="focoPers" data-id="' + p.id + '">' + A.avatar(p.id) + "<b>" + esc(p.nome.split(" ")[0]) + "</b><small>" + (p.id === meu ? "Selecionado" : d ? (d.robo ? "com robô" : "com " + esc(d.nome.split(" ")[0])) : "Livre") + "</small></button>";
+    });
+    h += "</div>";
+    var falas = S.falas(foco);
+    h += '<div class="tr-cartao tr-bordoes"><div class="cab"><h3>' + I("record_voice_over") + " BORDÕES &amp; GRITO DE TRUCO</h3></div><small class=\"rot\">VOZ OFICIAL DUBLADA</small>";
+    if (!falas.length) h += '<div class="vazio">Ainda sem voz gravada para este malandro. Grave a sua!</div>';
+    falas.forEach(function (f, i) { h += '<button class="fala" data-a="ouvirFala" data-id="' + foco + '" data-p="' + f.palavra + '"><span class="play' + (i % 2 ? " ouro" : "") + '">' + I("play_arrow") + "</span><span><b>" + esc(f.rotulo) + "</b><small>" + esc(P.nome.toUpperCase()) + "</small></span></button>"; });
+    h += '<button class="tr-mini ouro largo" data-a="vozes">' + I("mic") + " Gravar a minha voz para os gritos</button></div>";
+    var nomesAt = ["Força do blefe &amp; cara de pau", "Resenha &amp; desestabilização", "Velocidade da batida na mesa", "Sorte no vira &amp; manilhas"], cores = ["vermelho", "ouro", "verde", "ouro"];
+    h += '<div class="tr-cartao tr-atributos"><h3>' + I("sports_esports") + " ATRIBUTOS &amp; ESTILO</h3><small class=\"rot\">SÓ PRA RESENHA: NÃO MUDAM AS REGRAS</small>" +
+      P.atrib.map(function (v, i) { return '<div class="barra"><div class="r"><span>' + nomesAt[i] + "</span><b>" + v + '%</b></div><div class="trilho"><i class="' + cores[i] + '" style="width:' + v + '%"></i></div></div>'; }).join("") +
+      '<div class="habil">' + I("bolt") + "<div><b>ESTILO DE JOGO</b><p>" + esc(P.habilidade) + "</p></div></div></div></div>";
+    pinta("corpo", h);
+    var bloqueado = dono && !dono.robo;
+    pinta("base", '<button class="tr-btn vermelho largo" data-a="equipar" data-id="' + foco + '"' + (bloqueado ? " disabled" : "") + ">" + I("check_circle") + " " + (bloqueado ? "COM " + esc(dono.nome.toUpperCase()) : foco === meu ? "JÁ EQUIPADO" : "EQUIPAR NO JOGO") + "</button>");
+  }
+
+  /* ---------------- Baralhos ---------------- */
+  function renderBaralhos() {
+    shell("baralhos", '<div class="tela tr-tela"><div class="tr-cena" id="cen"></div><div class="tr-cab" id="cab"></div><div class="rolagem" id="corpo"></div><div class="tr-base" id="base"></div></div>');
+    pinta("cen", A.fundo(V ? V.config.cenario : "rancho") + '<div class="tr-escurece forte"></div>');
+    var foco = ui.focoTema || A.tema(), T = A.TEMAS[foco];
+    pinta("cab", '<button class="tr-ic" data-a="voltarLobbyTela">' + I("arrow_back") + '</button><div class="t"><small>BARALHOS 3D</small><b>DETALHE DO BARALHO</b></div>');
+    var h = '<div class="tr-conteudo"><div class="tr-sobretitulo"><span class="ponto"></span>ARMAZÉM DE BARALHOS</div>';
+    h += '<div class="tr-cartao tr-vitrine"><div class="cab"><span>' + I("casino") + ' MESA 3D</span><span class="tag-equip">' + (foco === A.tema() ? "EQUIPADO" : "PRÉVIA") + "</span></div>" +
+      '<div class="palco' + (ui.girar ? " girando" : "") + (ui.bater ? " batendo" : "") + '"><div class="carta-gira"><div class="f">' + A.verso({ tema: foco }) + '</div><div class="t">' + A.carta("AE") + "</div></div></div>" +
+      '<div class="tr-linha"><button class="tr-mini" data-a="girarBaralho">' + I("refresh") + " GIRAR</button><button class=\"tr-mini\" data-a=\"virarBaralho\">" + I("style") + " VIRAR</button><button class=\"tr-mini vermelho\" data-a=\"baterBaralho\">" + I("pan_tool") + " BATER CARTA</button></div></div>";
+    h += '<div class="tr-secao"><h3>COLEÇÃO DISPONÍVEL</h3></div><div class="tr-colecao">';
+    Object.keys(A.TEMAS).forEach(function (k) {
+      var t = A.TEMAS[k];
+      h += '<button class="tema' + (k === foco ? " foco" : "") + '" data-a="focoTema" data-id="' + k + '"><span class="amostra">' + A.verso({ tema: k }) + "</span>" + (k === A.tema() ? '<span class="tag-uso">EM USO</span>' : "") + "<b>" + esc(t.nome.toUpperCase()) + "</b><small>" + esc(t.desc) + "</small></button>";
+    });
+    h += "</div></div>";
+    pinta("corpo", h);
+    pinta("base", '<button class="tr-btn vermelho largo" data-a="equiparTema" data-id="' + foco + '">' + I("check_circle") + " " + (foco === A.tema() ? "JÁ EQUIPADO" : "EQUIPAR BARALHO NA MESA 3D") + "</button>");
   }
 
   /* ---------------- Mesa (jogo) ---------------- */
   function bolha(l) {
     var b = ui.bolhas[l];
     if (!b) return "";
-    var idade = Date.now() - b.t;
-    if (idade > (b.grito ? 2600 : 4000)) { delete ui.bolhas[l]; return ""; }
-    return '<div class="bolha' + (b.grito ? " grito" : "") + '">' + esc(b.texto) + "</div>";
+    if (Date.now() - b.t > (b.grito ? 2600 : 3800)) { delete ui.bolhas[l]; return ""; }
+    return '<div class="tr-bolha' + (b.grito ? " grito" : "") + (b.ouro ? " ouro" : "") + '">' + esc(b.texto) + "</div>";
   }
-  function assento(l) {
-    var a = V.assentos[l], m = V.mao, r = rel(l);
+  function jogador(l, pos) {
+    var a = V.assentos[l], m = V.mao;
     if (!a) return "";
+    var nosT = V.meuLugar >= 0 ? V.meuLugar % 2 : 0, nos = l % 2 === nosT;
     var vez = m && !m.fim && m.vez === l && !m.pedido && !(m.especial && !m.especial.decidido);
-    var h = '<div class="assento r' + r + (vez ? " vez" : "") + (l % 2 === (V.meuLugar < 0 ? 0 : V.meuLugar % 2) ? " nos" : " eles") + '">';
-    h += '<div class="av">' + A.avatar(a.personagem) + (a.online ? "" : '<span class="off">📵</span>') + (m && m.distribuidor === l ? '<span class="dist" title="Deu as cartas">🃏</span>' : "") + "</div>";
-    h += '<div class="nm">' + (a.robo ? "🤖 " + esc(a.nome.replace(/^Robô /, "")) : esc(a.nome.split(" ")[0])) + "</div>";
-    if (r !== 0 && m) { h += '<div class="mao-costas">'; for (var i = 0; i < a.cartas; i++) h += '<span class="costas">' + A.verso() + "</span>"; h += "</div>"; }
-    h += bolha(l);
-    return h + "</div>";
+    return '<div class="tr-jog ' + pos + (vez ? " vez" : "") + (nos ? " nos" : " eles") + '">' + bolha(l) +
+      '<div class="foto">' + A.avatar(a.personagem) + '<span class="cartas">' + I("style") + " " + (m ? a.cartas : 0) + "</span>" + (a.online ? "" : '<span class="off">📵</span>') + (m && m.distribuidor === l ? '<span class="pe" title="Deu as cartas">PÉ</span>' : "") + "</div>" +
+      '<b class="nome">' + esc(curto(a.nome)) + (pos === "pos-topo" ? " <span>(" + (nos ? "Nós" : "Eles") + ")</span>" : "") + "</b></div>";
+  }
+  function statusLinha() {
+    var m = V.mao;
+    if (!m || V.fase !== "jogo") return "";
+    if (m.fim) return "";
+    if (m.pedido) { var d = V.assentos[m.pedido.deLugar]; return '<span class="st vermelho">' + I("local_fire_department") + " " + esc(curto(d.nome)) + " pediu " + esc(m.pedido.nome) + (m.possoResponder ? " · responda aí embaixo" : " · esperando resposta") + "</span>"; }
+    if (m.especial && !m.especial.decidido) return '<span class="st ouro">' + I("hourglass_top") + " Mão de " + V.regra.maoEspecial + ": decidindo se joga…</span>";
+    var a = V.assentos[m.vez], seg = Math.max(0, Math.round((Date.now() - (ui.vezDesde || Date.now())) / 1000));
+    if (m.vez === V.meuLugar) return '<span class="st ouro">' + I("hourglass_top") + " Sua vez · " + seg + "s</span>";
+    return '<span class="st">' + I("hourglass_top") + " Pensando… <b>" + seg + "s</b> · " + esc(curto(a ? a.nome : "")) + "</span>";
   }
   function renderMesa() {
-    var novo = shell("mesa", '<div class="tela mesa-tela" id="mesaTela"><div class="cenario" id="cen"></div><div id="faixa"></div><div class="topo-truco" id="topo"></div>' +
-      '<div class="mesa-area" id="area"></div><div class="minha-area" id="minha"></div><div class="sobre" id="sobre"></div></div>');
+    var novo = shell("mesa", '<div class="tela tr-mesa" id="mesaTela"><div class="tr-cena" id="cen"></div><div id="faixa"></div>' +
+      '<header class="tr-topo" id="topo"></header><div class="tr-info" id="info"></div><div class="tr-status" id="status"></div>' +
+      '<div class="tr-arena" id="arena"></div><div class="tr-mao" id="mao"></div><div class="tr-acoes" id="acoesBar"></div><div class="tr-sobre" id="sobre"></div></div>');
+    pinta("cen", A.fundo(V.config.cenario) + '<div class="tr-escurece"></div>');
     pinta("faixa", faixa());
-    pinta("cen", A.fundo(V.config.cenario));
-    var m = V.mao, nos = V.meuLugar >= 0 ? V.meuLugar % 2 : 0, eles = 1 - nos, alvo = V.regra.alvo, tento = V.config.tento;
+    var m = V.mao, nosT = V.meuLugar >= 0 ? V.meuLugar % 2 : 0, elesT = 1 - nosT, alvo = V.regra.alvo, tento = V.config.tento;
     var naoLidas = V.chat.filter(function (c, i) { return i >= ui.chatVisto && !c.sistema && c.autorId !== V.meuId; }).length;
-    // placar
-    var t = '<button class="ic-btn" data-a="menu">☰</button><div class="placar">' +
-      '<div class="lado nos"><span class="rot">Nós</span><b>' + V.placar[nos] + "</b>" + A.tentos(tento, Math.min(V.placar[nos], alvo), alvo) + "</div>" +
-      '<div class="lado eles"><span class="rot">Eles</span><b>' + V.placar[eles] + "</b>" + A.tentos(tento, Math.min(V.placar[eles], alvo), alvo) + "</div></div>" +
-      '<button class="ic-btn" data-a="mudo">' + (S.cfg().musica || S.cfg().efeitos ? "🔊" : "🔇") + '</button><button class="ic-btn" data-a="chat">💬' + (naoLidas ? '<span class="selo">' + naoLidas + "</span>" : "") + "</button>";
-    pinta("topo", t);
-    if (!m) { pinta("area", ""); pinta("minha", ""); return; }
-    // área central
-    var h = '<div class="mesa-madeira">' + A.decoracaoMesa() + "</div>";
-    [1, 2, 3].forEach(function (r) { var l = (V.meuLugar + r + 4) % 4; if (V.meuLugar < 0) l = r; h += assento(l); });
-    var info = '<div class="info-mao"><span class="valor">Vale <b>' + m.valor + "</b></span>";
-    info += '<span class="vazas">' + [0, 1, 2].map(function (i) { var vz = m.vazas[i]; return '<i class="' + (!vz ? "" : vz.time === -1 ? "emp" : vz.time === nos ? "ganha" : "perde") + '"></i>'; }).join("") + "</span>";
-    if (m.vira) info += '<span class="vira">' + A.carta(m.vira, { cls: "mini" }) + '<span class="pequeno">manilha: <b>' + esc(m.manilhas === "Q" ? "Q" : m.manilhas) + "</b></span></span>";
-    if (m.ferro) info += '<span class="tag">Mão de ferro</span>';
-    if (m.especial) info += '<span class="tag">Mão de ' + V.regra.maoEspecial + "</span>";
-    h += info + "</div>";
-    // cartas na mesa
+    var mudo = !(S.cfg().musica || S.cfg().efeitos || S.cfg().vozes);
+    pinta("topo", '<button class="tr-ic" data-a="menu">' + I("menu") + '</button><button class="tr-ic mic" data-a="vozes">' + I("mic") + "</button>" +
+      '<div class="tr-placar"><span class="rot">NÓS</span><b class="nos">' + nn(V.placar[nosT]) + '</b><i></i><b class="eles">' + nn(V.placar[elesT]) + '</b><span class="rot">ELES</span></div>' +
+      '<button class="tr-ic" data-a="chat">' + I("chat") + (naoLidas ? '<span class="selo">' + naoLidas + "</span>" : "") + '</button><button class="tr-ic" data-a="mudo">' + I(mudo ? "volume_off" : "volume_up") + "</button>");
+    var info = '<span class="modo">' + I("sports_esports") + " <b>" + (V.regra.id === "paulista" ? "TRUCO PAULISTA" : "TRUCO MINEIRO") + "</b>";
+    if (m && m.vira) info += " · Vira [" + esc(m.vira.slice(0, -1) + A.SIMBOLO[m.vira.slice(-1)]) + "] → Manilha [" + esc(m.manilhas) + "]";
+    else if (m) info += " · Zap, copas, espadilha, pica-fumo";
+    info += '</span><span class="graos"><span class="g nos">' + A.tentos(tento, Math.min(V.placar[nosT], alvo), alvo) + '</span><span class="g eles">' + A.tentos(tento, Math.min(V.placar[elesT], alvo), alvo) + "</span></span>";
+    pinta("info", info);
+    pinta("status", statusLinha());
+    if (!m) { pinta("arena", ""); pinta("mao", ""); pinta("acoesBar", ""); return; }
+    var lugar = function (r) { return V.meuLugar < 0 ? r : (V.meuLugar + r) % 4; };
+    // arena: parceiro em cima, adversários dos lados, feltro no meio
+    var h = jogador(lugar(2), "pos-topo") + '<div class="tr-meio">' + jogador(lugar(3), "pos-esq") + '<div class="tr-feltro"><div class="rot">' + I("sports_bar") + " RESENHA</div>";
+    if (m.vira) h += '<div class="vira"><small>VIRA</small>' + A.carta(m.vira, { cls: "mini" }) + "</div>";
+    h += '<div class="vazas">' + [0, 1, 2].map(function (i) { var vz = m.vazas[i]; return '<i class="' + (!vz ? "" : vz.time === -1 ? "emp" : vz.time === nosT ? "ganha" : "perde") + '"></i>'; }).join("") + "</div>";
+    // cartas jogadas
     var mostrar = m.mesa.length ? m.mesa : (m.ultimaVaza || []);
     var velha = !m.mesa.length, ultV = m.vazas[m.vazas.length - 1];
     var venceu = velha && ultV && ultV.time !== -1 ? ultV.lugar : -1;
-    h += '<div class="jogadas' + (velha ? " velha" + (venceu >= 0 ? " recolhe r" + rel(venceu) : " empatou") : "") + '">';
+    h += '<div class="jogadas' + (velha && mostrar.length ? (venceu >= 0 ? " velha recolhe r" + rel(venceu) : " velha empatou") : "") + '">';
     mostrar.forEach(function (j) {
       var r = rel(j.lugar), nova = ui.animJogada && ui.animJogada.lugar === j.lugar && Date.now() - ui.animJogada.t < 700;
-      h += '<div class="jogada r' + r + (nova ? " chegando" : "") + (j.lugar === venceu ? " vencedora" : "") + '"><div class="c3d"><div class="fr">' + (j.coberta ? A.verso() : A.carta(j.carta)) + '</div><div class="vs">' + A.verso() + "</div></div></div>";
+      var forte = nova && ui.animJogada.forte;
+      h += '<div class="jogada r' + r + (nova ? " chegando" : "") + (forte ? " forte" : "") + (j.lugar === venceu ? " vencedora" : "") + '"><div class="c3d"><div class="fr">' + (j.coberta ? A.verso() : A.carta(j.carta)) + '</div><div class="vs">' + A.verso() + "</div></div>" + (forte ? '<div class="faiscas">' + "<i></i>".repeat(10) + "</div>" : "") + "</div>";
     });
     h += "</div>";
-    // cartas voando do baralho para cada jogador na hora de distribuir
     if (ui.animDistribuir && Date.now() - ui.animDistribuir < 2300 && !m.mesa.length && !m.vazas.length) {
-      var d0 = rel(m.distribuidor);
-      h += '<div class="distribuicao de' + d0 + '">';
+      h += '<div class="distribuicao de' + rel(m.distribuidor) + '">';
       for (var k = 0; k < 12; k++) h += '<div class="voa para' + rel((m.distribuidor + 1 + k) % 4) + '" style="--k:' + k + '">' + A.verso() + "</div>";
       h += "</div>";
       setTimeout(render, 2400);
     }
-    pinta("area", h);
+    if (m.especial && !m.especial.decidido && m.cartasParceiro) h += '<div class="parceiro"><small>CARTAS DO PARCEIRO</small><div>' + m.cartasParceiro.map(function (c) { return A.carta(c, { cls: "mini2" }); }).join("") + "</div></div>";
+    h += '<div class="valendo">' + I("local_fire_department") + " VALENDO " + m.valor + " PONTO" + (m.valor > 1 ? "S" : "") + (m.ferro ? " · MÃO DE FERRO" : m.especial ? " · MÃO DE " + V.regra.maoEspecial : "") + "</div>";
+    h += "</div>" + jogador(lugar(1), "pos-dir") + "</div>";
+    pinta("arena", h);
     // minha mão
     var mm = "";
     if (V.meuLugar >= 0) {
-      var minha = m.minhasCartas, minhaVez = m.vez === V.meuLugar && !m.pedido && !m.fim && !(m.especial && !m.especial.decidido);
+      var minhaVez = m.vez === V.meuLugar && !m.pedido && !m.fim && !(m.especial && !m.especial.decidido);
       var distribuindo = ui.animDistribuir && Date.now() - ui.animDistribuir < 2400;
-      mm += '<div class="eu">' + assentoEu() + "</div>";
+      mm += '<div class="dica">' + (minhaVez ? "TOQUE NUMA CARTA PRA JOGAR" : "") + "</div>" + bolha(V.meuLugar);
       mm += '<div class="minhas-cartas' + (minhaVez ? " ativa" : "") + '">';
-      minha.forEach(function (c, i) {
+      m.minhasCartas.forEach(function (c, i) {
         var man = m.forcas && m.forcas[i] >= 10;
-        mm += '<button class="minha-carta' + (distribuindo ? " dist" : "") + (man ? " manilha" : "") + '" style="--i:' + i + '" data-a="jogar" data-c="' + c + '"' + (minhaVez ? "" : " disabled") + ">" + A.carta(c, { manilha: man }) + "</button>";
+        mm += '<button class="minha-carta' + (distribuindo ? " dist" : "") + (man ? " manilha" : "") + '" style="--i:' + i + '" data-a="jogar" data-c="' + c + '"' + (minhaVez ? "" : " disabled") + ">" + (man ? '<span class="fita">MANILHA!</span>' : "") + A.carta(c, { manilha: man }) + "</button>";
       });
-      mm += "</div>";
-      mm += '<div class="acoes-mao">';
-      if (m.podeTruco) mm += '<button class="btn-truco" data-a="truco">' + esc(m.nomeProximo || "TRUCO") + "!</button>";
-      if (minhaVez && m.vazas.length > 0) mm += '<button class="btn-coberta' + (ui.coberta ? " on" : "") + '" data-a="coberta">' + (ui.coberta ? "🂠 Coberta: sim" : "🂠 Jogar coberta") + "</button>";
-      mm += '<div class="aviso-vez">' + (m.fim ? "" : m.pedido ? "" : minhaVez ? "Sua vez: toque numa carta" : (V.assentos[m.vez] ? "Vez de " + esc(V.assentos[m.vez].nome.replace(/^Robô /, "🤖 ").split(" ").slice(0, 2).join(" ")) : "")) + "</div>";
-      mm += "</div>";
+      mm += '</div><div class="tr-chips-mao"><button class="' + (ui.forte ? "on" : "") + '" data-a="forte"' + (minhaVez ? "" : " disabled") + ">" + I("pan_tool") + " Bater forte!</button>" +
+        '<button class="' + (ui.coberta ? "on" : "") + '" data-a="coberta"' + (minhaVez && m.vazas.length > 0 ? "" : " disabled") + ">" + I("visibility_off") + " Carta coberta</button></div>";
     }
-    pinta("minha", mm);
-    // sobreposições: pedido de truco, mão de 10/11, fim de mão, fim de partida
+    pinta("mao", mm);
+    // barra de ações
+    var ab = "", pe = m.pedido, resp = pe && m.possoResponder;
+    if (m.especial && !m.especial.decidido && m.possoDecidirEspecial) {
+      ab += '<div class="linha1"><button class="tr-acao correr" data-a="especial" data-v="0"><b>CORRER</b><small>FURAR</small></button><button class="tr-acao truco" data-a="especial" data-v="1">' + I("local_fire_department") + " <b>JOGAR A MÃO</b></button></div>";
+    } else {
+      var rotTruco = resp ? (pe.nomeAumento ? pe.nomeAumento + "!" : "NO MÁXIMO") : (m.nomeProximo ? m.nomeProximo + "!" : "TRUCO!");
+      var trucoOk = resp ? !!pe.nomeAumento : m.podeTruco;
+      ab += '<div class="linha1"><button class="tr-acao correr" data-a="responder" data-r="corro"' + (resp ? "" : " disabled") + "><b>CORRER</b><small>FURAR</small></button>" +
+        '<button class="tr-acao truco" data-a="' + (resp ? "responder" : "truco") + '" data-r="aumento"' + (trucoOk ? "" : " disabled") + ">" + I("local_fire_department") + " <b>" + esc(rotTruco) + "</b></button>" +
+        '<button class="tr-acao aceitar" data-a="responder" data-r="aceito"' + (resp ? "" : " disabled") + "><b>ACEITAR</b><small>" + (resp ? "VALE " + pe.valor : "CAI DENTRO!") + "</small></button></div>";
+    }
+    ab += '<div class="linha2"><div class="bordoes">' + BORDOES.map(function (b) { return '<button data-a="bordao" data-t="' + esc(b) + '">' + I("record_voice_over") + ' "' + esc(b) + '"</button>'; }).join("") + "</div></div>";
+    pinta("acoesBar", ab);
+    // sobreposições que não tapam os botões
     var sob = "";
-    if (m.pedido && !m.fim) {
-      var de = V.assentos[m.pedido.deLugar];
-      sob += '<div class="painel-pedido' + (m.possoResponder ? " responder" : "") + '"><div class="pedido-retrato">' + A.retrato(de.personagem) + '<div class="carimbo-pedido">' + esc(m.pedido.nome) + '!</div></div><div class="quem"><b>' + esc(de.nome) + "</b> (" + esc((PERS[de.personagem] || {}).nome || "") + ') pediu</div><div class="palavra">' + esc(m.pedido.nome) + "!</div>";
-      if (m.possoResponder) {
-        sob += '<div class="botoes"><button class="btn prim" data-a="responder" data-r="aceito">Desce! (vale ' + m.pedido.valor + ")</button><button class=\"btn fantasma\" data-a=\"responder\" data-r=\"corro\">Corro</button>" +
-          (m.pedido.nomeAumento ? '<button class="btn-truco" data-a="responder" data-r="aumento">' + esc(m.pedido.nomeAumento) + "!</button>" : "") + "</div>";
-      } else sob += '<div class="mudo pequeno">' + (m.pedido.deTime === nos ? "Esperando a outra dupla responder…" : "Seu parceiro está decidindo…") + "</div>";
-      sob += "</div>";
-    } else if (m.especial && !m.especial.decidido) {
-      if (m.possoDecidirEspecial) {
-        sob += '<div class="painel-pedido responder"><div class="palavra pequena">Mão de ' + V.regra.maoEspecial + '</div><div class="pequeno">Cartas do seu parceiro:</div><div class="cartas-parceiro">' + (m.cartasParceiro || []).map(function (c) { return A.carta(c, { cls: "mini2" }); }).join("") + "</div>" +
-          '<div class="botoes"><button class="btn prim" data-a="especial" data-v="1">Jogar (vale ' + (V.regra.id === "paulista" ? 3 : 4) + ')</button><button class="btn fantasma" data-a="especial" data-v="0">Correr</button></div></div>';
-      } else sob += '<div class="painel-pedido"><div class="palavra pequena">Mão de ' + V.regra.maoEspecial + '</div><div class="mudo pequeno">' + (m.especial.time === nos ? "Seu parceiro está decidindo…" : "A outra dupla está decidindo se joga…") + "</div></div>";
+    if (ui.gritao && Date.now() - ui.gritao.t < 2300) {
+      var g = V.assentos[ui.gritao.lugar];
+      if (g) sob += '<div class="tr-gritao"><div class="foto">' + A.retrato(g.personagem) + '</div><div class="carimbo">' + esc(ui.gritao.texto) + '</div><div class="quem">' + esc(curto(g.nome)) + "</div></div>";
     }
-    if (ui.fimMao && Date.now() - ui.fimMao.t < 3500 && V.fase === "jogo") {
+    if (ui.fimMao && Date.now() - ui.fimMao.t < 3400 && V.fase === "jogo") {
       var f = ui.fimMao;
-      sob += '<div class="faixa-fim ' + (f.nos ? "ganhou" : "perdeu") + '">' + (f.nos ? "Nós" : "Eles") + " +" + f.pontos + (f.motivo === "correu" ? " (correram)" : "") + "</div>";
+      sob += '<div class="tr-fim-mao ' + (f.nos ? "ganhou" : "perdeu") + '">' + (f.nos ? "NÓS" : "ELES") + " +" + f.pontos + (f.motivo === "correu" ? "<small>CORRERAM</small>" : "") + "</div>";
     }
     if (V.fase === "fim") {
-      var venceu = V.vencedor === nos;
-      sob += '<div class="painel-fim"><div class="trofeu">' + (venceu ? "🏆" : "🍺") + "</div><h2>" + (venceu ? "Vocês venceram!" : "Não foi dessa vez…") + "</h2>" +
-        '<div class="mudo">Placar ' + V.placar[nos] + " x " + V.placar[eles] + " · Partidas: " + V.partidas[nos] + " x " + V.partidas[eles] + "</div>" +
-        (V.souHost ? '<div class="pilha"><button class="btn prim" data-a="novaPartida">🃏 Jogar outra</button><button class="btn fantasma" data-a="voltarLobby">Trocar personagens ou regras</button></div>' : '<div class="mudo pequeno">Esperando o anfitrião começar outra…</div>') + "</div>";
+      var venceuP = V.vencedor === nosT;
+      sob += '<div class="tr-fim"><div class="trofeu">' + I(venceuP ? "trophy" : "sports_bar") + "</div><h2>" + (venceuP ? "VOCÊS VENCERAM!" : "NÃO FOI DESSA VEZ…") + "</h2>" +
+        "<p>Placar " + V.placar[nosT] + " x " + V.placar[elesT] + " · Partidas " + V.partidas[nosT] + " x " + V.partidas[elesT] + "</p>" +
+        (V.souHost ? '<button class="tr-btn vermelho grande" data-a="novaPartida">' + I("refresh") + ' JOGAR OUTRA</button><button class="tr-btn fantasma grande" data-a="voltarLobby">TROCAR MALANDROS OU REGRAS</button>' : '<p class="mudo">Esperando o host começar outra…</p>') + "</div>";
     }
     pinta("sobre", sob);
     var tela = document.getElementById("mesaTela");
     if (tela && ui.tremer && Date.now() - ui.tremer < 600) { tela.classList.remove("tremer"); void tela.offsetWidth; tela.classList.add("tremer"); ui.tremer = 0; }
     if (novo) S.iniciarMusica();
   }
-  function assentoEu() {
-    var a = V.assentos[V.meuLugar];
-    if (!a) return "";
-    return '<div class="assento-eu">' + A.avatar(a.personagem) + bolha(V.meuLugar) + "</div>";
-  }
 
   /* ---------------- Chat ---------------- */
   function abrirChat() {
     ui.modal = "chat";
     ui.chatVisto = V.chat.length;
-    var h = '<h2 class="titulo">💬 Conversa da mesa</h2><div class="chat-lista" id="chatLista">' + V.chat.map(function (c) {
+    var h = '<h2 class="tr-titulo">' + I("chat") + ' RESENHA DA MESA</h2><div class="chat-lista" id="chatLista">' + V.chat.map(function (c) {
       if (c.sistema) return '<div class="msg sis">' + esc(c.texto) + "</div>";
       return '<div class="msg' + (c.autorId === V.meuId ? " minha" : "") + '">' + (c.autorId === V.meuId ? "" : '<div class="autor">' + esc(c.autor) + "</div>") + esc(c.texto) + "</div>";
     }).join("") + '</div><div class="frases">' + ["Bora, parceiro!", "Tá com medo?", "Joga a menor!", "Segura que é nossa!", "Essa é minha!", "Kkkkk"].map(function (f) { return '<button class="chip" data-a="frase" data-t="' + esc(f) + '">' + esc(f) + "</button>"; }).join("") +
-      '</div><div class="linha-flex"><input id="chatin" class="entrada" maxlength="200" placeholder="Escreva para a mesa…" autocomplete="off"><button class="btn prim" data-a="enviarChat" style="width:auto">➤</button></div>';
+      '</div><div class="tr-linha"><input id="chatin" class="tr-entrada" maxlength="200" placeholder="Escreva para a mesa…" autocomplete="off"><button class="tr-btn ouro icone" data-a="enviarChat">' + I("send") + "</button></div>";
     abrirModal(h, "folha-chat");
     var l = document.getElementById("chatLista"); if (l) l.scrollTop = l.scrollHeight;
     var i = document.getElementById("chatin"); if (i) i.addEventListener("keydown", function (e) { if (e.key === "Enter") acoes.enviarChat(); });
@@ -615,17 +705,17 @@
     ui.modal = "som";
     S.listarMinhas().then(function (lista) {
       if (ui.modal !== "som") return;
-      var h = '<h2 class="titulo">🎵 Som</h2>';
-      [["musica", "Música de fundo"], ["efeitos", "Barulho das cartas e dos tentos"], ["vozes", "Vozes dos personagens"]].forEach(function (k) {
+      var h = '<h2 class="tr-titulo">' + I("volume_up") + " SOM</h2>";
+      [["musica", "Música de fundo"], ["efeitos", "Barulho das cartas e dos tentos"], ["vozes", "Vozes dos malandros"]].forEach(function (k) {
         h += '<label class="linha-chave"><span>' + k[1] + '</span><button class="chave' + (c[k[0]] ? " on" : "") + '" data-a="alternar" data-k="' + k[0] + '"></button></label>';
       });
-      h += '<label class="campo"><span>Volume</span><input type="range" id="volume" min="0" max="1" step="0.05" value="' + c.volume + '"></label>';
-      h += '<h2 class="secao">Música que toca</h2><div class="segmento"><button data-a="fonte" data-v="viola" class="' + (c.fonte === "viola" ? "sel" : "") + '">🪕 Viola caipira</button><button data-a="fonte" data-v="minhas" class="' + (c.fonte === "minhas" ? "sel" : "") + '">📱 Minhas músicas</button></div>';
-      h += '<div class="mudo pequeno" style="margin:6px 0">Tocando: ' + esc(S.nomeMusica()) + ' · <button class="link" data-a="proxMusica">próxima ⏭</button></div>';
-      h += '<div class="cartao"><b>📱 Minhas músicas</b><div class="mudo pequeno">Escolha músicas do seu celular (só toca no seu aparelho). Use músicas que você tem direito de usar.</div>' +
-        (lista.length ? lista.map(function (m) { return '<div class="voz-linha"><span>🎶 ' + esc(m.nome) + '</span><button class="btn pequeno fantasma" data-a="tirarMusica" data-id="' + m.id + '">🗑</button></div>'; }).join("") : '<div class="mudo pequeno" style="margin:8px 0">Nenhuma música ainda.</div>') +
-        '<label class="btn pequeno" style="margin-top:8px">➕ Adicionar músicas<input type="file" id="arqMusica" accept="audio/*" multiple hidden></label></div>';
-      h += '<button class="btn fantasma" data-a="fechar" style="margin-top:12px">Pronto</button>';
+      h += '<label class="tr-campo"><span>VOLUME</span><input type="range" id="volume" min="0" max="1" step="0.05" value="' + c.volume + '"></label>';
+      h += '<div class="alterna largo"><button data-a="fonte" data-v="viola" class="' + (c.fonte === "viola" ? "sel" : "") + '">VIOLA CAIPIRA</button><button data-a="fonte" data-v="minhas" class="' + (c.fonte === "minhas" ? "sel" : "") + '">MINHAS MÚSICAS</button></div>';
+      h += '<div class="mudo pequeno" style="margin:8px 0">Tocando: ' + esc(S.nomeMusica()) + ' · <button class="link" data-a="proxMusica">próxima</button></div>';
+      h += '<div class="tr-cartao"><b>Minhas músicas</b><div class="mudo pequeno">Escolha músicas do seu celular (só toca no seu aparelho). Use músicas que você tem direito de usar.</div>' +
+        (lista.length ? lista.map(function (m) { return '<div class="voz-linha"><span>🎶 ' + esc(m.nome) + '</span><button class="tr-mini" data-a="tirarMusica" data-id="' + m.id + '">' + I("close") + "</button></div>"; }).join("") : '<div class="mudo pequeno" style="margin:8px 0">Nenhuma música ainda.</div>') +
+        '<label class="tr-mini ouro" style="margin-top:8px">+ Adicionar músicas<input type="file" id="arqMusica" accept="audio/*" multiple hidden></label></div>';
+      h += '<button class="tr-btn fantasma grande" data-a="fechar" style="margin-top:12px">PRONTO</button>';
       abrirModal(h);
       var vol = document.getElementById("volume"); if (vol) vol.addEventListener("input", function () { S.definir("volume", parseFloat(vol.value)); });
       var arq = document.getElementById("arqMusica");
@@ -634,11 +724,23 @@
   }
 
   /* ---------------- Ações ---------------- */
+  function compartilharTexto(txt) {
+    try { if (window.Android && Android.compartilhar) { Android.compartilhar(txt); return; } if (navigator.share) { navigator.share({ text: txt }).catch(function () {}); return; } navigator.clipboard.writeText(txt).then(function () { toast("Convite copiado!"); }); } catch (e) {}
+  }
+  function textoConvite() { return "🃏 Bora jogar TRUCO comigo! Toque no link para sentar na mesa:\nhttps://rhmwmdjg-wq.github.io/caso-aberto/entrar.html?c=" + V.codigo + "&j=truco\n\n(Ou abra o jogo, toque em Truco e digite o código " + V.codigo + ")"; }
   var acoes = {
     fechar: fecharModal,
     jogos: function () { location.href = "index.html?hub=1" + (sufixo() ? "&" + sufixo() : ""); },
     criar: function () { if (precisaNome()) return; iniciarHost(gerarCodigo(), null, false); },
-    solo: function () { if (precisaNome()) return; iniciarHost("SOLO", null, true); H.motor.acao(H.meuId, { tipo: "robos" }); var p = LS.get("tr_ultimo_personagem", null); if (p) { var ocup = H.motor.personagensUsados(); if (ocup.indexOf(p) >= 0) { /* robô pegou: troca o robô */ var rid = Object.keys(H.motor.s.jogadores).filter(function (k) { return H.motor.s.jogadores[k].personagem === p; })[0]; if (rid) H.motor.s.jogadores[rid].personagem = Truco.PERSONAGENS.map(function (x) { return x.id; }).filter(function (x) { return H.motor.personagensUsados().indexOf(x) < 0; })[0]; } H.motor.acao(H.meuId, { tipo: "personagem", id: p }); } hostDifundir(); },
+    solo: function () {
+      if (precisaNome()) return;
+      iniciarHost("SOLO", null, true);
+      var p = LS.get("tr_ultimo_personagem", null);
+      if (p && PERS[p]) H.motor.acao(H.meuId, { tipo: "personagem", id: p });
+      H.motor.acao(H.meuId, { tipo: "robos" });
+      hostDifundir();
+      if (!meuPersonagem()) acoes.abrirPersonagens();
+    },
     entrar: function () {
       if (precisaNome()) return;
       var cod = (document.getElementById("codigo").value || "").toUpperCase();
@@ -651,27 +753,45 @@
     esquecer: function () { LS.del("tr_host"); LS.del("tr_cliente"); ui.shell = null; render(); },
     esquecerSolo: function () { LS.del("tr_solo"); ui.shell = null; render(); },
     cancelar: function () { if (modo === "cliente") LS.del("tr_cliente"); sairParaInicio(); },
-    convidar: function () {
-      var txt = "🃏 Bora jogar TRUCO comigo! Toque no link para sentar na mesa:\nhttps://rhmwmdjg-wq.github.io/caso-aberto/entrar.html?c=" + V.codigo + "&j=truco\n\n(Ou abra o jogo, toque em Truco e digite o código " + V.codigo + ")";
-      try { if (window.Android && Android.compartilhar) { Android.compartilhar(txt); return; } if (navigator.share) { navigator.share({ text: txt }).catch(function () {}); return; } navigator.clipboard.writeText(txt).then(function () { toast("Convite copiado!"); }); } catch (e) {}
+    convidar: function () { compartilharTexto(textoConvite()); },
+    mandarZap: function () {
+      var url = "https://wa.me/?text=" + encodeURIComponent(textoConvite());
+      if (window.Android && Android.abrirLink) Android.abrirLink(url); else window.open(url, "_blank");
     },
+    copiarCodigo: function () { try { navigator.clipboard.writeText(V.codigo).then(function () { toast("Código " + V.codigo + " copiado!"); }, function () { toast("Código: " + V.codigo); }); } catch (e) { toast("Código: " + V.codigo); } },
     sentar: function (el) { enviarAcao({ tipo: "sentar", lugar: +el.dataset.l }); },
     tirarRobo: function (el) { enviarAcao({ tipo: "tirarRobo", lugar: +el.dataset.l }); },
     robos: function () { enviarAcao({ tipo: "robos" }); },
-    personagem: function (el) { enviarAcao({ tipo: "personagem", id: el.dataset.id }, function (r) { if (r && r.ok) { S.voz(el.dataset.id, el.dataset.id === "mestre" ? "bordao" : "truco"); } }); },
-    ouvirPers: function (el) { var id = el.dataset.id; S.voz(id, id === "mestre" ? ["bordao", "truco", "provoca"][Math.floor(Math.random() * 3)] : ["truco", "seis", "aceito"][Math.floor(Math.random() * 3)]); },
+    abrirPersonagens: function () { ui.tela = "personagens"; ui.foco = meuPersonagem() || null; render(); },
+    voltarLobbyTela: function () { ui.tela = null; ui.girar = false; render(); },
+    focoPers: function (el) { ui.foco = el.dataset.id; S.voz(el.dataset.id, "selecao"); render(); },
+    ouvirFala: function (el) { if (S.voz(el.dataset.id, el.dataset.p) === false) toast("Ligue as vozes em Som.", true); },
+    equipar: function (el) {
+      enviarAcao({ tipo: "personagem", id: el.dataset.id }, function (r) {
+        if (r && r.ok) { S.voz(el.dataset.id, "selecao"); toast("Malandro equipado: " + pnome(el.dataset.id)); ui.tela = null; render(); }
+      });
+    },
+    baralhos: function () { fecharModal(); ui.tela = "baralhos"; ui.focoTema = A.tema(); render(); },
+    focoTema: function (el) { ui.focoTema = el.dataset.id; render(); },
+    girarBaralho: function () { ui.girar = !ui.girar; render(); },
+    virarBaralho: function () { var p = document.querySelector(".palco"); if (p) p.classList.toggle("virada"); },
+    baterBaralho: function () { var p = document.querySelector(".palco"); if (!p) return; p.classList.remove("batendo"); void p.offsetWidth; p.classList.add("batendo"); S.fx("estalo"); vibrar(80); },
+    equiparTema: function (el) { A.definirTema(el.dataset.id); LS.set("tr_tema", el.dataset.id); toast("Baralho " + A.TEMAS[el.dataset.id].nome + " equipado!"); S.fx("carta"); render(); },
+    estalo: function () { LS.set("tr_estalo", !LS.get("tr_estalo", true)); render(); },
     regra: function (el) { enviarAcao({ tipo: "config", regra: el.dataset.v }); },
     cenario: function (el) { enviarAcao({ tipo: V.fase === "lobby" ? "config" : "cenario", cenario: el.dataset.v }); },
     tento: function (el) { enviarAcao({ tipo: "config", tento: el.dataset.v }); },
     iniciar: function () { enviarAcao({ tipo: "iniciar" }); },
     jogar: function (el) {
-      var cob = ui.coberta; ui.coberta = false;
-      enviarAcao({ tipo: "jogar", carta: el.dataset.c, coberta: cob });
+      var cob = ui.coberta, forte = ui.forte; ui.coberta = false; ui.forte = false;
+      enviarAcao({ tipo: "jogar", carta: el.dataset.c, coberta: cob, forte: forte });
     },
     coberta: function () { ui.coberta = !ui.coberta; render(); },
+    forte: function () { ui.forte = !ui.forte; render(); },
     truco: function () { enviarAcao({ tipo: "truco" }); },
     responder: function (el) { enviarAcao({ tipo: "responder", resposta: el.dataset.r }); },
     especial: function (el) { enviarAcao({ tipo: "maoEspecial", jogar: el.dataset.v === "1" }); },
+    bordao: function (el) { enviarAcao({ tipo: "bordao", texto: el.dataset.t }); },
     novaPartida: function () { enviarAcao({ tipo: "novaPartida" }); },
     voltarLobby: function () { enviarAcao({ tipo: "voltarLobby" }); },
     chat: abrirChat,
@@ -681,7 +801,12 @@
       var t = i.value; i.value = "";
       enviarAcao({ tipo: "chat", texto: t }, function () { if (ui.modal === "chat") abrirChat(); });
     },
-    mudo: function () { var c = S.cfg(), ligado = c.musica || c.efeitos || c.vozes; S.silenciarTudo(ligado); toast(ligado ? "🔇 Tudo no silêncio" : "🔊 Som ligado"); render(); },
+    enviarChatLobby: function () {
+      var i = document.getElementById("chatLobby"); if (!i || !i.value.trim()) return;
+      var t = i.value; i.value = ""; i.blur();
+      enviarAcao({ tipo: "chat", texto: t });
+    },
+    mudo: function () { var c = S.cfg(), ligado = c.musica || c.efeitos || c.vozes; S.silenciarTudo(ligado); toast(ligado ? "Tudo no silêncio" : "Som ligado"); render(); },
     som: telaSom,
     alternar: function (el) { var k = el.dataset.k; S.definir(k, !S.cfg()[k]); telaSom(); if (V) render(); },
     fonte: function (el) { S.definir("fonte", el.dataset.v); setTimeout(telaSom, 300); },
@@ -690,30 +815,29 @@
     vozes: telaVozes,
     usarVoz: function () { LS.set("tr_usar_voz", LS.get("tr_usar_voz", true) === false); enviarMinhasVozes(); telaVozes(); },
     gravar: function (el) { gravar(el.dataset.p); },
-    ouvir: function (el) { var p = meuPersonagem(), v = vozesSalvas(p)[el.dataset.p]; if (v) { try { new Audio(v).play(); } catch (e) {} } else S.voz(p, el.dataset.p); },
+    ouvir: function (el) { var p = meuPersonagem(), v = vozesSalvas(p)[el.dataset.p]; if (v) { try { new Audio(v).play(); } catch (e) {} } else if (S.voz(p, el.dataset.p) === false) toast("Esse grito ainda não tem voz. Grave a sua!", true); },
     apagarVoz: function (el) { var p = meuPersonagem(), v = vozesSalvas(p); delete v[el.dataset.p]; LS.set("tr_voz_" + p, v); enviarMinhasVozes(); telaVozes(); },
     menu: function () {
       ui.modal = "menu";
-      var h = '<div class="pilha">' + (V.souHost ? '<div class="secao">Trocar o cenário</div><div class="grade-cen mini">' + Object.keys(A.CENARIOS).map(function (k) { return '<button class="cen' + (V.config.cenario === k ? " sel" : "") + '" data-a="cenario" data-v="' + k + '">' + A.CENARIOS[k].icone + " " + esc(A.CENARIOS[k].nome) + "</button>"; }).join("") + "</div>" : "") +
-        '<button class="btn" data-a="som">🎵 Som e música</button><button class="btn" data-a="vozes">🎤 Minha voz</button><button class="btn" data-a="regras">📖 Regras</button>' +
-        (H && H.solo ? "" : '<button class="btn" data-a="convidar">📨 Convidar (mesa ' + esc(V.codigo) + ")</button>") +
-        '<button class="btn fantasma" data-a="sair">🚪 Sair da mesa</button><button class="btn fantasma" data-a="fechar">Voltar</button></div>';
+      var h = '<div class="tr-menu">' + (V.souHost ? '<small class="rot">TROCAR O CENÁRIO</small><div class="cenarios">' + Object.keys(A.CENARIOS).map(function (k) { return '<button class="' + (V.config.cenario === k ? "sel" : "") + '" data-a="cenario" data-v="' + k + '">' + A.CENARIOS[k].icone + " " + esc(A.CENARIOS[k].nome) + "</button>"; }).join("") + "</div>" : "") +
+        '<button class="tr-btn escuro grande" data-a="baralhos">' + I("style") + ' BARALHOS</button><button class="tr-btn escuro grande" data-a="som">' + I("volume_up") + ' SOM E MÚSICA</button><button class="tr-btn escuro grande" data-a="vozes">' + I("mic") + ' MINHA VOZ</button><button class="tr-btn escuro grande" data-a="regras">' + I("casino") + " REGRAS</button>" +
+        (H && H.solo ? "" : '<button class="tr-btn verde grande" data-a="mandarZap">' + I("chat") + " CHAMAR NO ZAP (" + esc(V.codigo) + ")</button>") +
+        '<button class="tr-btn fantasma grande" data-a="sair">' + I("logout") + ' SAIR DA MESA</button><button class="tr-btn fantasma grande" data-a="fechar">VOLTAR</button></div>';
       abrirModal(h);
     },
     sair: function () {
-      abrirModal("<p>" + (modo === "host" && !(H && H.solo) ? "Você é o anfitrião. Se sair, <b>a mesa fecha para todos</b>." : "Sair da mesa?") + '</p><div class="linha-flex"><button class="btn fantasma" data-a="fechar">Ficar</button><button class="btn prim" data-a="sairOk">Sair</button></div>');
+      abrirModal('<h2 class="tr-titulo">SAIR DA MESA?</h2><p>' + (modo === "host" && !(H && H.solo) ? "Você é o host. Se sair, <b>a mesa fecha para todos</b>." : "Você pode voltar depois pelo código.") + '</p><div class="tr-linha"><button class="tr-btn fantasma" data-a="fechar">FICAR</button><button class="tr-btn vermelho" data-a="sairOk">SAIR</button></div>');
     },
     sairOk: function () { sairDaMesa(); },
     regras: function () {
-      abrirModal('<h2 class="titulo">📖 Como jogar truco</h2><div class="regras">' +
+      abrirModal('<h2 class="tr-titulo">' + I("casino") + ' COMO JOGAR TRUCO</h2><div class="regras">' +
         "<p><b>Mesa:</b> quatro jogadores em duas duplas. Quem senta em frente é o parceiro. Faltou gente? Os robôs completam.</p>" +
-        "<p><b>A mão:</b> cada um recebe 3 cartas. Ganha a mão quem fizer 2 de 3 rodadas (vazas). Se empatar (cangar) a primeira, quem ganhar a segunda leva. Ganhou a primeira e empatou a segunda? Leva quem ganhou a primeira.</p>" +
-        "<p><b>Truco Mineiro:</b> manilhas fixas, da maior para a menor: <b>4♣ (zap)</b>, <b>7♥ (copas)</b>, <b>A♠ (espadilha)</b> e <b>7♦ (pica-fumo)</b>. Depois: 3, 2, A, K, J, Q, 7, 6, 5, 4. A mão vale 2 tentos; truco 4, seis 6, nove 10, doze 12. Quem chega a 10 joga a <b>mão de 10</b>: vê as cartas do parceiro e decide se joga (vale 4) ou corre.</p>" +
+        "<p><b>A mão:</b> cada um recebe 3 cartas. Ganha a mão quem fizer 2 de 3 rodadas. Se empatar (cangar) a primeira, quem ganhar a segunda leva. Ganhou a primeira e empatou a segunda? Leva quem ganhou a primeira.</p>" +
+        "<p><b>Truco Mineiro:</b> manilhas fixas, da maior para a menor: <b>4♣ (zap)</b>, <b>7♥ (copas)</b>, <b>A♠ (espadilha)</b> e <b>7♦ (pica-fumo)</b>. Depois: 3, 2, A, K, J, Q, 7, 6, 5, 4. A mão vale 2 tentos; truco 4, seis 6, nove 10, doze 12. <b>Mão de 10</b>: a dupla vê as cartas do parceiro e decide se joga (vale 4) ou corre.</p>" +
         "<p><b>Truco Paulista:</b> uma carta é virada (a vira) e a manilha é a carta seguinte. Entre as manilhas: ♣ > ♥ > ♠ > ♦. A mão vale 1; truco 3, seis 6, nove 9, doze 12. <b>Mão de 11</b> igual à mão de 10.</p>" +
-        "<p><b>Pedindo truco:</b> na sua vez, toque em TRUCO. A outra dupla pode aceitar (desce), correr (vocês levam o valor de antes) ou aumentar (seis, nove, doze). Quem pediu por último não pode aumentar de novo até a outra dupla aumentar.</p>" +
-        "<p><b>Carta coberta:</b> a partir da segunda rodada, dá para jogar uma carta virada para baixo. Ela não vale nada, mas esconde o jogo.</p>" +
-        "<p><b>Partida:</b> quem chegar a 12 tentos primeiro ganha. Os tentos são grãos de milho ou de feijão branco, como na mesa do bar.</p></div>" +
-        '<button class="btn prim" data-a="fechar">Bora jogar</button>');
+        "<p><b>Botões da mesa:</b> TRUCO pede aumento na sua vez. Quando pedirem pra você: CORRER, ACEITAR ou aumentar (SEIS, NOVE, DOZE). <b>Bater forte</b> joga a carta com estalo e faísca. <b>Carta coberta</b> (a partir da 2ª rodada) joga virada para baixo e não vale nada.</p>" +
+        "<p><b>Partida:</b> quem chegar a 12 tentos primeiro ganha. Os tentos são grãos de milho ou de feijão branco.</p></div>" +
+        '<button class="tr-btn vermelho grande" data-a="fechar">BORA JOGAR</button>');
     }
   };
 
@@ -737,6 +861,8 @@
     if (modo === "cliente" && C && C.entrou && Date.now() - C.ultimo > 6000) clientePerdeu();
     if (modo === "host" && H) setTimeout(hostDifundir, 500);
   });
+  // relógio do "Pensando…"
+  setInterval(function () { if (V && V.fase === "jogo" && ui.shell === "mesa" && !ui.tela) pinta("status", statusLinha()); }, 1000);
   // atualiza bolhas e animações que expiram
   setInterval(function () { if (V && V.fase !== "lobby" && Object.keys(ui.bolhas).length) render(); }, 1000);
   // tela acesa no navegador

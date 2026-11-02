@@ -15,19 +15,12 @@
   var NOMES_PEDIDO = { 1: "", 2: "", 3: "TRUCO", 4: "TRUCO", 6: "SEIS", 9: "NOVE", 10: "NOVE", 12: "DOZE" };
   var PALAVRA = { TRUCO: "truco", SEIS: "seis", NOVE: "nove", DOZE: "doze" };
 
+  // Os malandros da mesa (fotos do jogo). Os números são só o estilo de cada um: não mudam as regras.
   var PERSONAGENS = [
-    { id: "barba", nome: "Barbudo", desc: "Cara fechada, carta boa. Nunca ri antes de ver o zap.", foto: true },
-    { id: "chapeu", nome: "Juninho do Chapéu", desc: "Óculos escuros para ninguém ler o blefe dele.", foto: true },
-    { id: "mestre", nome: "Mestre Valdo", desc: "Joga truco nesse balcão há mais de 40 anos. Não nasceu ontem.", foto: true },
-    { id: "morena", nome: "Morena do Ás", desc: "Sorriso de quem tem a espadilha guardada na mão.", foto: true },
-    { id: "tiao", nome: "Seu Tião", desc: "Fazendeiro das antigas. Não corre de truco nem de chuva." },
-    { id: "ze", nome: "Zé do Pequi", desc: "Vende pequi na beira da estrada e grita mais que todo mundo." },
-    { id: "lurdinha", nome: "Dona Lurdinha", desc: "Dona do boteco. Conhece o blefe de cada freguês." },
-    { id: "bene", nome: "Bené Vaqueiro", desc: "Gibão de couro, fala pouco e pede seis sem piscar." },
-    { id: "toinho", nome: "Toinho Barranqueiro", desc: "Pescador do Velho Chico. Paciente como o rio." },
-    { id: "cida", nome: "Cida Benzedeira", desc: "Benze o baralho antes de cada mão. Dizem que funciona." },
-    { id: "juca", nome: "Juca Sanfoneiro", desc: "Toca no forró de sábado e truca no domingo." },
-    { id: "rosinha", nome: "Rosinha do Forró", desc: "Rainha do arrasta-pé e do blefe de doze." }
+    { id: "mestre", nome: "Mestre Valdo", titulo: "O terror da mesa", desc: "Joga truco nesse balcão há mais de 40 anos. Se gritar truco, ele dobra sorrindo.", naipe: "♠ Espadilha", blefe: 98, resenha: 120, atrib: [95, 90, 85, 80], habilidade: "Grito de mão de ferro: quando pede truco, ainda solta uma provocação." },
+    { id: "morena", nome: "Morena do Ás", titulo: "Rainha do blefe", desc: "Sorriso de quem tem a espadilha guardada na mão. Ninguém lê o jogo dela.", naipe: "♥ Copas", blefe: 96, resenha: 115, atrib: [97, 88, 70, 86], habilidade: "Deboche elegante: as provocações dela aparecem em dourado." },
+    { id: "chapeu", nome: "Juninho do Chapéu", titulo: "Cria do rancho", desc: "Óculos escuros para ninguém ler o blefe. Bate a carta na mesa sem dó.", naipe: "♣ Zap", blefe: 88, resenha: 110, atrib: [85, 92, 96, 75], habilidade: "Tapa relâmpago: a batida forte dele faz mais faísca." },
+    { id: "barba", nome: "Barbudo", titulo: "Intimidação fria", desc: "Cara fechada, carta boa. Nunca ri antes de ver o zap na mesa.", naipe: "♦ Pica-fumo", blefe: 90, resenha: 95, atrib: [90, 78, 88, 84], habilidade: "Olhar gelado: ninguém sabe se ele tem manilha." }
   ];
   var NOMES_ROBOS = ["Robô Tonho", "Robô Dita", "Robô Vavá", "Robô Quinha", "Robô Bastião", "Robô Nena"];
 
@@ -141,8 +134,13 @@
       }
       case "personagem": {
         if (!PERSONAGENS.some(function (p) { return p.id === a.id; })) return { ok: false };
-        if (this.personagensUsados().indexOf(a.id) >= 0 && j.personagem !== a.id) return { ok: false, erro: "Esse personagem já foi escolhido por outro jogador." };
+        var dono = null, selfP = this;
+        Object.keys(s.jogadores).forEach(function (k) { if (k !== jid && s.jogadores[k].personagem === a.id) dono = k; });
+        if (dono && !this.ehRobo(dono)) return { ok: false, erro: "Esse personagem já foi escolhido por outro jogador." };
+        var antigo = j.personagem;
         j.personagem = a.id;
+        // se um robô estava com ele, o robô troca de personagem
+        if (dono) s.jogadores[dono].personagem = antigo || PERSONAGENS.map(function (x) { return x.id; }).filter(function (x) { return selfP.personagensUsados().indexOf(x) < 0; })[0] || null;
         return { ok: true };
       }
       case "sentar": {
@@ -181,7 +179,16 @@
         return { ok: true };
       }
       case "iniciar": return ehHost ? this.iniciar() : { ok: false, erro: "Só o anfitrião começa." };
-      case "jogar": return this.jogar(jid, a.carta, !!a.coberta);
+      case "jogar": return this.jogar(jid, a.carta, !!a.coberta, !!a.forte);
+      case "bordao": {
+        var t2 = String(a.texto || "").trim().slice(0, 60);
+        if (!t2) return { ok: false };
+        j.ultBordao = j.ultBordao || 0;
+        if (this.agora() - j.ultBordao < 2500) return { ok: false, erro: "Calma, deixa o povo respirar!" };
+        j.ultBordao = this.agora();
+        this.evento({ tipo: "bordao", lugar: this.lugarDe(jid), jid: jid, texto: t2 });
+        return { ok: true };
+      }
       case "truco": return this.pedirTruco(jid);
       case "responder": return this.responder(jid, a.resposta);
       case "maoEspecial": return this.decidirMaoEspecial(jid, a.jogar);
@@ -206,6 +213,11 @@
     var s = this.s, self = this;
     if (s.fase !== "lobby") return { ok: false };
     if (s.assentos.indexOf(null) >= 0) return { ok: false, erro: "Faltam lugares na mesa. Chame mais gente ou complete com robôs." };
+    // robôs sem personagem pegam os que sobraram
+    s.assentos.forEach(function (id) {
+      var jj = s.jogadores[id];
+      if (jj.robo && !jj.personagem) jj.personagem = PERSONAGENS.map(function (x) { return x.id; }).filter(function (x) { return self.personagensUsados().indexOf(x) < 0; })[0] || null;
+    });
     var sem = s.assentos.filter(function (id) { return !s.jogadores[id].personagem; }).map(function (id) { return s.jogadores[id].nome; });
     if (sem.length) return { ok: false, erro: "Falta escolher personagem: " + sem.join(", ") + "." };
     s.placar = [0, 0];
@@ -249,7 +261,7 @@
     return null;
   };
 
-  P.jogar = function (jid, carta, coberta) {
+  P.jogar = function (jid, carta, coberta, forte) {
     var s = this.s, m = s.mao, erro = this.podeAgir(jid);
     if (erro) return { ok: false, erro: erro };
     var l = this.lugarDe(jid), mao = m.maos[l], i = mao.indexOf(carta);
@@ -259,7 +271,7 @@
     mao.splice(i, 1);
     m.mesa.push({ lugar: l, carta: carta, coberta: !!coberta });
     m.jogadas.push({ lugar: l, carta: carta, coberta: !!coberta, vaza: m.vazas.length });
-    this.evento({ tipo: "jogou", lugar: l, carta: coberta ? null : carta });
+    this.evento({ tipo: "jogou", lugar: l, carta: coberta ? null : carta, forte: !!forte });
     if (m.mesa.length < 4) { m.vez = (l + 1) % 4; return { ok: true }; }
     this.fecharVaza();
     return { ok: true };

@@ -67,6 +67,13 @@
       tom(t, 150, 0.09, 0.35, "sine", 70);
       rajada(t + 0.01, 0.12, 600, 0.7, 0.2, "lowpass");
     },
+    estalo: function (t) { // batida forte: tapa seco na peroba e faíscas
+      tom(t, 80, 0.25, 0.9, "sine", 38); rajada(t, 0.16, 300, 0.6, 0.7, "lowpass"); rajada(t, 0.05, 3000, 0.8, 0.8);
+      for (var i = 0; i < 14; i++) rajada(t + 0.04 + Math.random() * 0.3, 0.012, 5000 + Math.random() * 3000, 3, 0.18);
+    },
+    alarde: function (t) { // pedido de truco sem voz gravada: pancada dupla na mesa
+      FX.murro(t); FX.murro(t + 0.16); rajada(t + 0.05, 0.5, 900, 0.5, 0.25);
+    },
     murro: function (t) { tom(t, 95, 0.18, 0.7, "sine", 45); rajada(t, 0.12, 400, 0.6, 0.5, "lowpass"); FX.jogar(t + 0.02); }, // murro na mesa no truco
     tento: function (t, n) { // grãos de milho/feijão caindo no monte
       for (var i = 0; i < (n || 4) * 2; i++) { var tt = t + Math.random() * 0.35; tom(tt, 1800 + Math.random() * 1800, 0.025, 0.14, "triangle"); rajada(tt, 0.02, 3500, 2, 0.08); }
@@ -85,11 +92,20 @@
   }
 
   /* ---------------- Vozes dos personagens ---------------- */
-  var vozesCustom = {};   // jogadorId -> { palavra: dataURL } (gravadas pelo próprio jogador)
+  var vozesCustom = {};
+  // Falas que existem para cada personagem (as gravações enviadas para o jogo)
+  var FALAS = {
+    mestre: { truco: "truco", selecao: "bordao", provoca: "provoca", reacao: "reacao" },
+    chapeu: { truco: "truco", selecao: "selecao" },
+    barba: { truco: "truco", selecao: "selecao", reacao: "reacao" },
+    morena: { selecao: "selecao" }
+  };
+  var ROTULOS = { truco: "Grito de TRUCO", selecao: "Bordão de apresentação", provoca: "Provocação depois do truco", reacao: "Reação" };   // jogadorId -> { palavra: dataURL } (gravadas pelo próprio jogador)
   var tocandoVoz = null;
   function voz(personagem, palavra, jogadorId) {
     if (!cfg.vozes || !personagem || !palavra) return;
-    var src = (jogadorId && vozesCustom[jogadorId] && vozesCustom[jogadorId][palavra]) || ("truco/vozes/" + personagem + "-" + palavra + ".mp3");
+    var src = (jogadorId && vozesCustom[jogadorId] && vozesCustom[jogadorId][palavra]) || (FALAS[personagem] && FALAS[personagem][palavra] ? "truco/falas/" + personagem + "-" + FALAS[personagem][palavra] + ".mp3" : null);
+    if (!src) return false;
     try {
       if (tocandoVoz) { tocandoVoz.pause(); }
       var a = new Audio(src);
@@ -98,7 +114,8 @@
       // abaixa a música enquanto o personagem grita
       abafar(1.6);
       a.play().catch(function () {});
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   }
   function abafar(seg) {
     if (!ctx || !busMusica) return;
@@ -264,6 +281,8 @@
   global.SomTruco = {
     cfg: function () { return cfg; }, definir: definir, silenciarTudo: silenciarTudo,
     fx: fx, voz: voz, vozesCustom: vozesCustom,
+    falas: function (p) { var f = FALAS[p] || {}; return Object.keys(f).map(function (k) { return { palavra: k, rotulo: ROTULOS[k] || k }; }); },
+    temFala: function (p, palavra) { return !!(FALAS[p] && FALAS[p][palavra]); },
     iniciarMusica: iniciarMusica, pararMusica: pararMusica, nomeMusica: function () { return cfg.fonte === "minhas" ? "Suas músicas" : MUSICAS[idxMusica].nome; },
     proximaMusica: function () { if (cfg.fonte === "minhas") { if (minhaMusica) { minhaMusica.pause(); minhaMusica = null; } idxMinha++; tocarMinhas(); } else { idxMusica = (idxMusica + 1) % MUSICAS.length; passo = 0; } },
     listarMinhas: listarMinhas, adicionarMinhas: adicionarMinhas, removerMinha: removerMinha

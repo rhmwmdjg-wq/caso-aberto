@@ -7,80 +7,14 @@
   "use strict";
 
   /* ---------------- Personagens ---------------- */
-  var LOOK = {
-    tiao:     { pele: "#c98e62", cabelo: "#d9d9d9", camisa: "#6b8e4e", chapeu: "palha", bigode: true, barba: false, rugas: true },
-    ze:       { pele: "#a86b42", cabelo: "#2b1a10", camisa: "#d9822b", chapeu: "bone", bigode: false, sorriso: true },
-    lurdinha: { pele: "#e0aa82", cabelo: "#6a3b1f", camisa: "#c0392b", chapeu: "coque", brinco: true, batom: true },
-    bene:     { pele: "#8d5a36", cabelo: "#1a110b", camisa: "#8b5a2b", chapeu: "couro", bigode: true },
-    toinho:   { pele: "#6e4426", cabelo: "#1a110b", camisa: "#2e86ab", chapeu: "pescador", barba: true },
-    cida:     { pele: "#b07a52", cabelo: "#ededed", camisa: "#7d4f9e", chapeu: "lenco", brinco: true, oculos: true },
-    juca:     { pele: "#d29a6e", cabelo: "#3b2414", camisa: "#e8c547", chapeu: "palha-fita", bigode: true, sorriso: true },
-    rosinha:  { pele: "#9c6440", cabelo: "#140c08", camisa: "#e84f8a", chapeu: "flor", brinco: true, batom: true, cacheado: true }
-  };
   var FOTOS = { barba: 1, chapeu: 1, mestre: 1, morena: 1 };
   function temFoto(id) { return !!FOTOS[id]; }
   function retrato(id) { // corpo inteiro (seleção de personagem e grito de truco)
-    return FOTOS[id] ? '<img class="retrato-foto" src="truco/img/' + id + '-corpo.jpg" alt="" draggable="false">' : avatar(id, "grande");
+    return FOTOS[id] ? '<img class="retrato-foto" src="truco/img/' + id + '-corpo.jpg" alt="" draggable="false">' : '<div class="sem-foto">?</div>';
   }
   function avatar(id, extra) {
     if (FOTOS[id]) return '<img class="avatar-foto ' + (extra || "") + '" src="truco/img/' + id + '-rosto.jpg" alt="" draggable="false">';
-    var L = LOOK[id] || { pele: "#c98e62", cabelo: "#333", camisa: "#777", chapeu: "" };
-    var s = '<svg viewBox="0 0 100 100" class="avatar-svg ' + (extra || "") + '" aria-hidden="true">';
-    s += '<circle cx="50" cy="50" r="49" fill="#f3e2c0"/>';
-    // corpo
-    s += '<path d="M14 100 Q16 72 50 70 Q84 72 86 100 Z" fill="' + L.camisa + '"/>';
-    s += '<path d="M42 70 L50 82 L58 70" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="2"/>';
-    s += '<rect x="43" y="58" width="14" height="14" rx="5" fill="' + L.pele + '"/>';
-    // cabelo atrás
-    if (L.chapeu === "coque" || L.chapeu === "flor" || L.cacheado) s += '<ellipse cx="50" cy="42" rx="27" ry="29" fill="' + L.cabelo + '"/>';
-    if (L.cacheado) for (var i = 0; i < 9; i++) s += '<circle cx="' + (24 + i * 6.5) + '" cy="' + (60 + (i % 2) * 4) + '" r="6" fill="' + L.cabelo + '"/>';
-    // rosto
-    s += '<ellipse cx="50" cy="44" rx="21" ry="24" fill="' + L.pele + '"/>';
-    s += '<ellipse cx="29" cy="46" rx="4" ry="6" fill="' + L.pele + '"/><ellipse cx="71" cy="46" rx="4" ry="6" fill="' + L.pele + '"/>';
-    if (L.brinco) s += '<circle cx="29" cy="54" r="2.2" fill="#f1c40f"/><circle cx="71" cy="54" r="2.2" fill="#f1c40f"/>';
-    // cabelo da frente
-    if (L.chapeu !== "lenco") s += '<path d="M29 38 Q32 18 50 18 Q68 18 71 38 Q62 28 50 28 Q38 28 29 38 Z" fill="' + L.cabelo + '"/>';
-    // olhos e sobrancelhas
-    s += '<ellipse cx="42" cy="44" rx="2.6" ry="3" fill="#20140c"/><ellipse cx="58" cy="44" rx="2.6" ry="3" fill="#20140c"/>';
-    s += '<circle cx="43" cy="43" r=".9" fill="#fff"/><circle cx="59" cy="43" r=".9" fill="#fff"/>';
-    s += '<path d="M37 38 Q42 35 46 38 M54 38 Q58 35 63 38" stroke="' + (L.cabelo === "#ededed" || L.cabelo === "#d9d9d9" ? "#999" : "#20140c") + '" stroke-width="2" fill="none" stroke-linecap="round"/>';
-    if (L.oculos) s += '<circle cx="42" cy="44" r="6" fill="none" stroke="#333" stroke-width="1.6"/><circle cx="58" cy="44" r="6" fill="none" stroke="#333" stroke-width="1.6"/><path d="M48 44 L52 44" stroke="#333" stroke-width="1.6"/>';
-    if (L.rugas) s += '<path d="M34 50 Q36 52 35 54 M66 50 Q64 52 65 54" stroke="rgba(0,0,0,.25)" stroke-width="1.2" fill="none"/>';
-    // nariz e boca
-    s += '<path d="M50 46 Q47 53 50 55 Q52 55 53 54" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.6" stroke-linecap="round"/>';
-    if (L.barba) s += '<path d="M30 50 Q32 70 50 70 Q68 70 70 50 Q64 62 50 62 Q36 62 30 50 Z" fill="' + L.cabelo + '"/>';
-    if (L.bigode) s += '<path d="M40 58 Q45 54 50 57 Q55 54 60 58 Q55 60 50 59 Q45 60 40 58 Z" fill="' + (L.cabelo === "#d9d9d9" ? "#bdbdbd" : L.cabelo) + '"/>';
-    s += L.sorriso || L.batom ? '<path d="M43 61 Q50 67 57 61" fill="' + (L.batom ? "#b0303a" : "#7a2e22") + '" stroke="none"/>' : '<path d="M44 62 Q50 65 56 62" fill="none" stroke="#6b2a1e" stroke-width="2" stroke-linecap="round"/>';
-    // chapéus
-    switch (L.chapeu) {
-      case "palha": case "palha-fita":
-        s += '<ellipse cx="50" cy="27" rx="38" ry="8" fill="#e3c27a" stroke="#b8954a" stroke-width="1.5"/><path d="M31 27 Q33 8 50 8 Q67 8 69 27 Z" fill="#e8c983" stroke="#b8954a" stroke-width="1.5"/>';
-        s += '<path d="M33 22 L67 22" stroke="' + (L.chapeu === "palha-fita" ? "#c0392b" : "#8a6a32") + '" stroke-width="3.5"/>';
-        for (var k = 0; k < 6; k++) s += '<path d="M' + (36 + k * 6) + ' 10 L' + (34 + k * 6) + ' 26" stroke="#c9a65e" stroke-width=".8"/>';
-        break;
-      case "couro":
-        s += '<path d="M10 30 Q50 40 90 30 Q80 22 70 25 Q68 6 50 7 Q32 6 30 25 Q20 22 10 30 Z" fill="#7a4a24" stroke="#4d2e15" stroke-width="1.5"/><path d="M30 25 Q50 30 70 25" stroke="#4d2e15" stroke-width="2" fill="none"/>';
-        for (var q = 0; q < 5; q++) s += '<circle cx="' + (38 + q * 6) + '" cy="16" r="1.4" fill="#d4a24c"/>';
-        break;
-      case "bone":
-        s += '<path d="M29 30 Q30 12 50 12 Q70 12 71 30 Z" fill="#1f6f43"/><path d="M50 28 Q76 26 84 33 Q66 34 50 31 Z" fill="#185a36"/><circle cx="50" cy="13" r="2" fill="#185a36"/>';
-        break;
-      case "pescador":
-        s += '<path d="M26 31 Q28 12 50 12 Q72 12 74 31 Q50 27 26 31 Z" fill="#cfc3a1"/><path d="M20 33 Q50 24 80 33 Q50 38 20 33 Z" fill="#b9ac87"/>';
-        break;
-      case "lenco":
-        s += '<path d="M27 42 Q26 14 50 14 Q74 14 73 42 Q66 26 50 26 Q34 26 27 42 Z" fill="#c0392b"/>';
-        for (var b = 0; b < 7; b++) s += '<circle cx="' + (34 + b * 5.4) + '" cy="' + (22 + (b % 2) * 3) + '" r="1.3" fill="#fff"/>';
-        s += '<path d="M70 34 Q80 40 76 50 Q72 42 68 40 Z" fill="#a93226"/>';
-        break;
-      case "coque":
-        s += '<circle cx="50" cy="13" r="9" fill="' + L.cabelo + '"/><path d="M44 13 L56 11" stroke="#f1c40f" stroke-width="2"/>';
-        break;
-      case "flor":
-        s += '<g transform="translate(68 22)">' + [0, 72, 144, 216, 288].map(function (r) { return '<ellipse cx="0" cy="-5" rx="3.5" ry="5.5" fill="#ff6fa3" transform="rotate(' + r + ')"/>'; }).join("") + '<circle r="3" fill="#ffd23f"/></g>';
-        break;
-    }
-    return s + "</svg>";
+    return '<div class="sem-foto ' + (extra || "") + '">?</div>';
   }
 
   /* ---------------- Cartas ---------------- */
@@ -121,27 +55,36 @@
     if (!c) return verso(opts);
     var r = c.slice(0, -1), n = c.slice(-1), cor = COR[n], sim = SIMBOLO[n];
     var s = '<svg viewBox="0 0 80 120" class="carta-svg' + (opts.cls ? " " + opts.cls : "") + '">';
-    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#fdfbf5" stroke="#cfc6b0" stroke-width="1.2"/>';
-    s += '<text x="7" y="19" font-size="16" font-weight="700" fill="' + cor + '" font-family="Georgia,serif">' + (NOME_RANK[r] || r) + '</text><text x="7" y="33" font-size="13" fill="' + cor + '">' + sim + "</text>";
-    s += '<g transform="rotate(180 40 60)"><text x="7" y="19" font-size="16" font-weight="700" fill="' + cor + '" font-family="Georgia,serif">' + (NOME_RANK[r] || r) + '</text><text x="7" y="33" font-size="13" fill="' + cor + '">' + sim + "</text></g>";
+    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#F7F3E8" stroke="#d6ccb4" stroke-width="1.2"/>';
+    var canto = '<text x="6" y="23" font-size="21" fill="' + cor + '" font-family="Anton,Impact,sans-serif">' + (NOME_RANK[r] || r) + '</text><text x="6.5" y="37" font-size="13" fill="' + cor + '">' + sim + "</text>";
+    s += canto + '<g transform="rotate(180 40 60)">' + canto + "</g>";
     if (r === "K" || r === "Q" || r === "J") s += figura(r, n);
     else if (r === "A") s += '<text x="40" y="76" text-anchor="middle" font-size="' + (n === "E" ? 50 : 40) + '" fill="' + cor + '">' + sim + "</text>" + (n === "E" ? '<circle cx="40" cy="60" r="30" fill="none" stroke="' + cor + '" stroke-width="1" opacity=".35"/>' : "");
     else {
       var num = parseInt(r, 10);
       (PIPS[num] || []).forEach(function (p) { s += '<text x="' + p[0] + '" y="' + (p[1] + 6) + '" text-anchor="middle" font-size="17" fill="' + cor + '">' + sim + "</text>"; });
     }
-    if (opts.manilha) s += '<rect x="2.5" y="2.5" width="75" height="115" rx="6" fill="none" stroke="#e0a526" stroke-width="2.5"/>';
+    if (opts.manilha) s += '<rect x="2.5" y="2.5" width="75" height="115" rx="6" fill="none" stroke="#E5A93C" stroke-width="2.5"/>';
     return s + "</svg>";
   }
+  // Temas de baralho (só muda a cor das costas; cada jogador escolhe o seu)
+  var TEMAS = {
+    classico: { nome: "Clássico Boteco", desc: "Costas vermelhas, do jeito que o povo conhece", base: "#c8161d", linha: "#e8545a", emblema: "#c8161d", fundo: "#F7F3E8" },
+    safira: { nome: "Azul Safira", desc: "Arabescos azuis, pra quem gosta de mesa fina", base: "#1e4e9c", linha: "#5f8fe0", emblema: "#1e4e9c", fundo: "#F7F3E8" },
+    ouro: { nome: "Ouro Imperial", desc: "Costas douradas que brilham na luz do lampião", base: "#a8761a", linha: "#f2cf6b", emblema: "#8a5d0c", fundo: "#fff6dc" },
+    preto: { nome: "Preto Fosco", desc: "Discreto, sério, de quem não brinca em serviço", base: "#1d1a18", linha: "#6b5a44", emblema: "#E5A93C", fundo: "#1d1a18" }
+  };
+  var temaAtual = "classico";
   function verso(opts) {
     opts = opts || {};
+    var t = TEMAS[opts.tema || temaAtual] || TEMAS.classico, id = "trama-" + (opts.tema || temaAtual);
     var s = '<svg viewBox="0 0 80 120" class="carta-svg verso' + (opts.cls ? " " + opts.cls : "") + '">';
-    s += '<defs><pattern id="tr-trama2" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#c8161d"/><path d="M0 3 L3 0 L6 3 L3 6 Z" fill="none" stroke="#e8545a" stroke-width=".6"/></pattern></defs>';
-    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#fdfbf5" stroke="#d8d0bd"/><rect x="5" y="5" width="70" height="110" rx="4" fill="url(#tr-trama2)"/>';
-    s += '<rect x="8" y="8" width="64" height="104" rx="3" fill="none" stroke="#fff" stroke-width=".9" opacity=".85"/>';
-    s += '<circle cx="40" cy="58" r="15" fill="#fdfbf5"/><circle cx="40" cy="58" r="12.5" fill="none" stroke="#c8161d" stroke-width=".8"/>';
-    s += '<text x="40" y="66" text-anchor="middle" font-size="22" fill="#c8161d">♠</text>';
-    s += '<text x="40" y="88" text-anchor="middle" font-size="7.5" fill="#fff" font-family="Georgia,serif" font-weight="700" letter-spacing="2">TRUCO</text>';
+    s += '<defs><pattern id="' + id + '" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="' + t.base + '"/><path d="M0 3 L3 0 L6 3 L3 6 Z" fill="none" stroke="' + t.linha + '" stroke-width=".6"/></pattern></defs>';
+    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#F7F3E8" stroke="#d8d0bd"/><rect x="5" y="5" width="70" height="110" rx="4" fill="url(#' + id + ')"/>';
+    s += '<rect x="8" y="8" width="64" height="104" rx="3" fill="none" stroke="' + (t.fundo === "#1d1a18" ? "#E5A93C" : "#fff") + '" stroke-width=".9" opacity=".85"/>';
+    s += '<circle cx="40" cy="58" r="15" fill="' + t.fundo + '"/><circle cx="40" cy="58" r="12.5" fill="none" stroke="' + t.emblema + '" stroke-width=".8"/>';
+    s += '<text x="40" y="66" text-anchor="middle" font-size="22" fill="' + t.emblema + '">♠</text>';
+    s += '<text x="40" y="90" text-anchor="middle" font-size="9" fill="' + (t.fundo === "#1d1a18" ? "#E5A93C" : "#fff") + '" font-family="Anton,Impact,sans-serif" letter-spacing="2">TRUCO</text>';
     return s + "</svg>";
   }
 
@@ -204,8 +147,6 @@
       return '<div class="cen-rancho"><div class="foto" style="background-image:url(truco/img/rancho.jpg)"></div><div class="luz"></div>' +
         '<svg class="chao" viewBox="0 0 400 500" preserveAspectRatio="none"><defs><linearGradient id="ch-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4024"/><stop offset="1" stop-color="#2a170b"/></linearGradient></defs><rect width="400" height="500" fill="url(#ch-r)"/>' +
         Array.apply(null, Array(16)).map(function (_, i) { return '<path d="M0 ' + (i * 32 + 10) + " L400 " + (i * 32 + 14) + '" stroke="#3c2312" stroke-width="2.5" opacity=".7"/>'; }).join("") +
-        '<g transform="translate(266 46) rotate(-3)"><rect x="-4" y="-30" width="4" height="34" fill="#4a2c17"/><rect x="96" y="-30" width="4" height="34" fill="#4a2c17"/><rect x="-14" y="0" width="128" height="58" rx="4" fill="#9a6a3c" stroke="#5a3a1c" stroke-width="2"/>' +
-        '<text x="50" y="18" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif" font-weight="700">Aqui tem:</text><text x="50" y="33" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif">Truco, cerveja</text><text x="50" y="48" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif">e resenha boa!</text></g>' +
         "</svg></div>";
     }
     var s = '<svg class="cenario-svg" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">';
@@ -250,5 +191,5 @@
     return s + "</svg>";
   }
 
-  global.ArteTruco = { avatar: avatar, retrato: retrato, temFoto: temFoto, carta: carta, verso: verso, tentos: tentos, grao: grao, decoracaoMesa: decoracaoMesa, fundo: fundo, CENARIOS: CENARIOS, SIMBOLO: SIMBOLO };
+  global.ArteTruco = { TEMAS: TEMAS, definirTema: function (t) { if (TEMAS[t]) temaAtual = t; }, tema: function () { return temaAtual; }, avatar: avatar, retrato: retrato, temFoto: temFoto, carta: carta, verso: verso, tentos: tentos, grao: grao, decoracaoMesa: decoracaoMesa, fundo: fundo, CENARIOS: CENARIOS, SIMBOLO: SIMBOLO };
 })(window);
