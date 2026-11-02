@@ -83,16 +83,18 @@ Para testar no computador sem celular: rode um servidor na pasta `www` e abra
 ## Truco do Norte de Minas
 
 Na tela inicial do app, escolha **Truco**. Mesa de 4 em duplas (robôs completam as vagas),
-Truco Mineiro ou Paulista, 8 personagens com voz própria, 4 cenários e tento de milho ou feijão.
+Truco Mineiro ou Paulista, 4 malandros (Mestre Valdo, Morena do Ás, Juninho do Chapéu e Barbudo),
+visual "Tavolagem Truco Raiz", baralhos com 4 cores de costas, batida forte, bordões e tento de milho ou feijão.
 
 | O quê | Arquivo |
 |---|---|
 | Regras do truco e robôs | `app/src/main/assets/www/truco/motor-truco.js` |
 | Telas e sala online | `app/src/main/assets/www/truco/app-truco.js` e `css/truco.css` |
-| Personagens, cartas e cenários (desenhos) | `app/src/main/assets/www/truco/arte-truco.js` |
+| Cartas, baralhos e cenários (desenhos) | `app/src/main/assets/www/truco/arte-truco.js` |
 | Efeitos, vozes e viola caipira | `app/src/main/assets/www/truco/som-truco.js` |
-| Vozes dos personagens | `app/src/main/assets/www/truco/vozes/*.mp3` |
+| Fotos dos malandros | `app/src/main/assets/www/truco/img/` |
+| Falas dos malandros | `app/src/main/assets/www/truco/falas/*.mp3` |
 
-Créditos das vozes: geradas com o Piper TTS (vozes brasileiras *faber*, *jeff* e *cadu*,
-do conjunto OHF-Voice, licença CC0) e depois mexidas no tom e no volume.
-As cartas, os personagens, a música de viola e os cenários foram feitos para este jogo (sem marcas).
+Créditos: fotos e voz de referência (ElevenLabs) enviadas pelo dono do jogo; falas curtas em inglês
+de bancos de áudio gratuitos (Pixabay); fontes Anton e Work Sans (SIL Open Font License);
+ícones Material Symbols (Google, Apache 2.0). Cartas, cenários e música de viola feitos para este jogo, sem marcas.
