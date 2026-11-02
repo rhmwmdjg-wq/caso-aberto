@@ -158,6 +158,8 @@
       case "plantar": return this.plantar(jid, a.texto, a.origem);
       case "votar": return this.votar(jid, a);
       case "fotografar": return this.fotografar(jid, a.itemId);
+      case "perguntar": return this.perguntar(jid, a);
+      case "mural": return this.muralAcao(jid, a);
     }
     return { ok: false, erro: "Ação inválida." };
   };
@@ -610,6 +612,94 @@
     return { ok: true };
   };
 
+  /* ---------------- Pergunta livre a um suspeito (respondida pela IA no celular do anfitrião) ---------------- */
+  P.perguntar = function (jid, a) {
+    var s = this.s, p = s.partida;
+    if (s.fase !== "rodada" || !p) return { ok: false, erro: "Só dá para interrogar durante as rodadas." };
+    if ((p.acoes[jid] || 0) <= 0) return { ok: false, erro: "Você já usou suas ações nesta rodada." };
+    var caso = this.caso(), sus = null;
+    caso.suspeitos.forEach(function (x) { if (x.id === a.id) sus = x; });
+    if (!sus) return { ok: false, erro: "Suspeito inválido." };
+    var texto = String(a.texto || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (texto.length < 4) return { ok: false, erro: "Escreva a sua pergunta." };
+    p.perguntas = p.perguntas || [];
+    if (p.perguntas.some(function (q) { return q.jid === jid && q.resposta == null; })) return { ok: false, erro: "Espere a resposta da sua pergunta anterior." };
+    var pg = { id: this.novoId("pg"), jid: jid, sus: sus.id, pergunta: texto, resposta: null, rodada: p.rodada, ts: this.agora() };
+    p.perguntas.push(pg);
+    p.acoes[jid]--;
+    return { ok: true, pergunta: pg };
+  };
+
+  // resposta = texto da IA; se vier erro, a pergunta é desfeita e a ação devolvida
+  P.responder = function (id, resposta, erro) {
+    var p = this.s.partida;
+    if (!p || !p.perguntas) return { ok: false };
+    var pg = null, i;
+    for (i = 0; i < p.perguntas.length; i++) if (p.perguntas[i].id === id) pg = p.perguntas[i];
+    if (!pg || pg.resposta != null) return { ok: false };
+    var sus = null;
+    this.caso().suspeitos.forEach(function (x) { if (x.id === pg.sus) sus = x; });
+    if (!resposta) {
+      p.perguntas = p.perguntas.filter(function (q) { return q !== pg; });
+      if (this.s.fase === "rodada" && p.rodada === pg.rodada) p.acoes[pg.jid] = (p.acoes[pg.jid] || 0) + 1;
+      this.sistema((sus ? sus.nome : "O suspeito") + " não respondeu à pergunta de " + this.nome(pg.jid) + (erro ? " (" + String(erro).slice(0, 90) + ")" : "") + ". A ação foi devolvida.");
+      return { ok: true, falhou: true };
+    }
+    pg.resposta = String(resposta).slice(0, 500);
+    if (p.cadernos[pg.jid]) p.cadernos[pg.jid].push({
+      pid: "pg:" + pg.id, tipo: "pergunta", rodada: pg.rodada,
+      origem: "Pergunta a " + (sus ? sus.nome : "suspeito"),
+      texto: "Pergunta: \u201c" + pg.pergunta + "\u201d \u2014 Resposta: \u201c" + pg.resposta + "\u201d",
+      pergunta: pg.pergunta, resposta: pg.resposta, sus: pg.sus
+    });
+    return { ok: true };
+  };
+
+  // se o anfitrião fechou o app no meio de uma pergunta, ela é desfeita
+  P.cancelarPerguntasPendentes = function () {
+    var p = this.s.partida, self = this;
+    if (!p || !p.perguntas) return;
+    p.perguntas.filter(function (q) { return q.resposta == null; }).forEach(function (q) { self.responder(q.id, null, "o anfitrião saiu do app"); });
+  };
+
+  /* ---------------- Mural do detetive (fios e linha do tempo, compartilhado) ---------------- */
+  P.muralAcao = function (jid, a) {
+    var s = this.s, p = s.partida;
+    if (!p || (s.fase !== "rodada" && s.fase !== "votacao")) return { ok: false, erro: "O mural só funciona durante a investigação." };
+    var m = p.mural || (p.mural = { pos: {}, fios: [], tempo: {} });
+    var caso = this.caso();
+    function valido(id) {
+      id = String(id || "");
+      if (id === "vitima") return true;
+      if (id.indexOf("s:") === 0) return caso.suspeitos.some(function (x) { return "s:" + x.id === id; });
+      return p.quadro.some(function (q) { return q.id === id; });
+    }
+    function num(x) { x = Number(x); return isFinite(x) ? Math.round(Math.max(0, Math.min(1, x)) * 1000) / 1000 : 0; }
+    if (a.op === "mover") {
+      if (!valido(a.id)) return { ok: false };
+      m.pos[a.id] = [num(a.x), num(a.y)];
+      return { ok: true };
+    }
+    if (a.op === "ligar") {
+      if (!valido(a.a) || !valido(a.b) || a.a === a.b) return { ok: false };
+      var par = [String(a.a), String(a.b)].sort();
+      for (var i = 0; i < m.fios.length; i++) if (m.fios[i][0] === par[0] && m.fios[i][1] === par[1]) { m.fios.splice(i, 1); return { ok: true, removido: true }; }
+      if (m.fios.length >= 80) return { ok: false, erro: "O mural já tem fios demais. Tire algum antes." };
+      m.fios.push([par[0], par[1], this.nome(jid)]);
+      return { ok: true };
+    }
+    if (a.op === "hora") {
+      if (!valido(a.id)) return { ok: false };
+      var h = String(a.hora || "").trim();
+      if (!h) { delete m.tempo[a.id]; return { ok: true }; }
+      var mm = /^(\d{1,2}):(\d{2})$/.exec(h);
+      if (!mm || +mm[1] > 23 || +mm[2] > 59) return { ok: false, erro: "Use a hora no formato 21:30." };
+      m.tempo[a.id] = ("0" + (+mm[1])).slice(-2) + ":" + mm[2];
+      return { ok: true };
+    }
+    return { ok: false };
+  };
+
   /* ---------------- Visão de cada jogador ---------------- */
   P.visao = function (jid) {
     var s = this.s, p = s.partida, self = this;
@@ -682,6 +772,8 @@
         minhaFalsa: !!q.falsa && q.autorId === jid
       };
     });
+    v.mural = p.mural || { pos: {}, fios: [], tempo: {} };
+    v.perguntando = (p.perguntas || []).filter(function (q) { return q.jid === jid && q.resposta == null; }).map(function (q) { return { sus: q.sus, pergunta: q.pergunta }; });
     v.publicadas = {};
     p.quadro.forEach(function (q) { if (q.pid) v.publicadas[q.pid] = q.autor; });
 

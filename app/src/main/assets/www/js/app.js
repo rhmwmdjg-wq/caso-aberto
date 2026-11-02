@@ -126,6 +126,11 @@
     setTimeout(function () { d.style.opacity = "0"; d.style.transition = "opacity .3s"; }, dur);
     setTimeout(function () { d.remove(); }, dur + 400);
   }
+  var SITE_CONVITE = "https://rhmwmdjg-wq.github.io/caso-aberto/entrar.html";
+  function textoConvite() {
+    return "🔍 Bora jogar CASO ABERTO comigo! Toque no link para entrar direto na minha sala:\n" + SITE_CONVITE + "?c=" + V.codigo +
+      "\n\n(Se não abrir, abra o jogo e digite o código " + V.codigo + ")";
+  }
   function compartilhar(texto) {
     try {
       if (window.Android && Android.compartilhar) { Android.compartilhar(texto); return; }
@@ -170,6 +175,7 @@
     if (!estadoSalvo && ui.nivelInicial) motor.definirNivel(ui.nivelInicial);
     // ao retomar, todos começam offline até reconectarem
     if (estadoSalvo) motor.s.ordem.forEach(function (id) { if (id !== meu.id) motor.s.jogadores[id].online = false; });
+    if (estadoSalvo) motor.cancelarPerguntasPendentes();
 
     H = { motor: motor, meuId: meu.id, conns: {}, visto: {}, codigo: codigo, rede: null, salvarEm: 0 };
     H.rede = Rede.criarHost(codigo, {
@@ -249,12 +255,28 @@
       }
     }
     if (r && r.ok) hostDifundir();
+    if (r && r.ok && r.pergunta) hostResponderPergunta(r.pergunta);
     return r;
+  }
+
+  // A IA (Gemini do anfitrião) responde no lugar do suspeito
+  function hostResponderPergunta(pg) {
+    var motor = H.motor;
+    var hist = ((motor.s.partida && motor.s.partida.perguntas) || []).filter(function (q) { return q.sus === pg.sus && q.resposta != null; });
+    function fim(txt, erro) {
+      if (!H || H.motor !== motor) return;
+      motor.responder(pg.id, txt, erro);
+      hostDifundir();
+    }
+    if (!window.IA) { fim(null, "IA indisponível"); return; }
+    IA.responderSuspeito({ caso: motor.caso(), susId: pg.sus, pergunta: pg.pergunta, historico: hist, jogador: motor.nome(pg.jid) })
+      .then(function (t) { fim(t); }, function (e) { fim(null, (e && e.message) || "falha na IA"); });
   }
 
   function hostDifundir() {
     if (!H) return;
-    function comFotos(v) { if (v.caso && window.Fotos) v.fotosIA = Fotos.temIA(v.caso.id); return v; }
+    var iaOk = !!(window.IA && IA.config().chave);
+    function comFotos(v) { if (v.caso && window.Fotos) v.fotosIA = Fotos.temIA(v.caso.id); v.iaPerguntas = iaOk; return v; }
     for (var cid in H.conns) H.rede.enviar(cid, { t: "estado", v: comFotos(H.motor.visao(H.conns[cid])) });
     receberVisao(comFotos(H.motor.visao(H.meuId)));
     var agora = Date.now(), chave = H.solo ? "ca_solo" : "ca_host";
@@ -275,6 +297,7 @@
     var motor = new Motor({ casos: CASOS, especialidades: ESPECIALIDADES, codigo: "SOLO", estado: estadoSalvo || null });
     motor.s.codigo = "SOLO";
     motor.s.config.solo = true;
+    if (estadoSalvo) motor.cancelarPerguntasPendentes();
     var meu = motor.entrar(token, meuNome || "Detetive", true);
     motor.s.hostId = meu.id;
     H = {
@@ -460,6 +483,10 @@
       antes.quadro.forEach(function (q) { confAntes[q.id] = q.confirmados.length; });
       if (v.quadro.some(function (q) { return confAntes[q.id] != null && q.confirmados.length > confAntes[q.id]; })) som("carimbo");
     }
+    if (antes && antes.caderno && v.caderno && v.caderno.length > antes.caderno.length) {
+      var respostas = v.caderno.slice(antes.caderno.length).filter(function (e) { return e.tipo === "pergunta"; });
+      if (respostas.length) setTimeout(function () { mostrarResposta(respostas[respostas.length - 1]); }, 50);
+    }
     if (antes && antes.chat && ui.aba !== "chat" && v.fase !== "lobby") {
       var ult = v.chat[v.chat.length - 1], ultAntes = antes.chat[antes.chat.length - 1];
       if (ult && (!ultAntes || ult.id !== ultAntes.id) && !ult.sistema && ult.autorId !== v.meuId) { toast("💬 " + ult.autor + ": " + ult.texto.slice(0, 40)); som("sino"); }
@@ -552,12 +579,13 @@
     var ok = shell("inicio",
       '<div class="tela"><div class="rolagem"><div class="conteudo">' +
       '<div class="logo"><span class="lupa">🔍</span><h1 class="titulo">CASO<span>.</span>ABERTO</h1><div><span class="slogan digita">um de vocês está mentindo</span></div></div>' +
-      '<div id="retomar"></div>' +
+      '<div id="atualizar"></div><div id="retomar"></div>' +
       '<label class="campo"><span>Seu nome de detetive</span><input id="nome" class="entrada" maxlength="18" autocomplete="off" placeholder="Ex.: Ruan"></label>' +
       '<div class="pilha"><button class="btn prim" data-a="criar">🕵️ Criar sala</button><button class="btn fantasma" data-a="solo">🕯️ Jogar sozinho <span class="mudo pequeno">(sem internet)</span></button></div>' +
       '<div class="ou">ou entre com um código</div>' +
       '<div class="linha-flex" style="align-items:stretch"><input id="codigo" class="entrada codigo" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="····" style="flex:1.4"><button class="btn latao" data-a="entrar" style="width:auto">Entrar</button></div>' +
       '<div class="centro" style="margin-top:22px"><button class="link" data-a="regras">📖 Como jogar</button> · <button class="link" data-a="config">🎵 Som e efeitos</button></div>' +
+      '<div class="centro mudo pequeno" id="versao" style="margin-top:14px"></div>' +
       "</div></div></div>");
     if (ok) {
       var n = document.getElementById("nome");
@@ -570,6 +598,8 @@
       if (cod) c.value = cod[1].toUpperCase();
     }
     pinta("retomar", retomar);
+    pinta("atualizar", avisoAtualizacao());
+    pinta("versao", versaoInstalada() ? 'Versão 1.' + versaoInstalada() + ' · <button class="link" data-a="procurarVersao">procurar atualização</button>' : "");
   }
 
   function precisaNome() {
@@ -584,7 +614,7 @@
   function renderLobby() {
     shell("lobby", '<div class="tela"><div id="faixa"></div><div class="rolagem" id="corpo"></div><div class="base" id="base"></div></div>');
     pinta("faixa", faixa());
-    var h = '<div class="conteudo">';
+    var h = '<div class="conteudo">' + avisoAtualizacao();
     h += '<div class="cartao codigo-sala"><div class="rot">CÓDIGO DA SALA</div><div class="cod">' + esc(V.codigo) + '</div>' +
       '<button class="btn latao" data-a="convidar">📨 Convidar amigos</button></div>';
 
@@ -713,7 +743,8 @@
         var n = (V.vistos && V.vistos["d:" + s.id]) || 0;
         info = '<div class="seta">' + (n >= 2 ? "✓ tudo ouvido" : "🗣️ " + n + "/2") + "</div>";
       }
-      return '<' + (clicavel ? 'button data-a="interrogar" data-id="' + s.id + '"' : "div") + ' class="suspeito-linha' + (clicavel && ((V.vistos["d:" + s.id] || 0) >= 2) ? " esgotado" : "") + '"><div class="retrato">' + iniciais(s.nome) + '</div><div><div class="n">' + esc(s.nome) + ' <span class="mudo pequeno">· ' + s.idade + ' anos</span></div><div class="d">' + esc(s.ocupacao) + ". " + esc(s.descricao) + "</div></div>" + info + "</" + (clicavel ? "button" : "div") + ">";
+      if (clicavel && V.iaPerguntas) info = '<div class="seta">' + (((V.vistos && V.vistos["d:" + s.id]) || 0) >= 2 ? "✓" : "🗣️ " + ((V.vistos && V.vistos["d:" + s.id]) || 0) + "/2") + " · 💬</div>";
+      return '<' + (clicavel ? 'button data-a="interrogar" data-id="' + s.id + '"' : "div") + ' class="suspeito-linha' + (clicavel && !V.iaPerguntas && ((V.vistos["d:" + s.id] || 0) >= 2) ? " esgotado" : "") + '"><div class="retrato">' + iniciais(s.nome) + '</div><div><div class="n">' + esc(s.nome) + ' <span class="mudo pequeno">· ' + s.idade + ' anos</span></div><div class="d">' + esc(s.ocupacao) + ". " + esc(s.descricao) + "</div></div>" + info + "</" + (clicavel ? "button" : "div") + ">";
     }).join("");
   }
 
@@ -752,7 +783,7 @@
     else if (ui.aba === "caderno") html = abaCaderno();
     else if (ui.aba === "chat") { html = abaChat(); ui.vistosChat = V.chat.length; }
     else if (ui.aba === "ficha") html = abaFicha();
-    pinta("corpo", '<div class="conteudo">' + html + "</div>");
+    if (!ui.arrastando) pinta("corpo", '<div class="conteudo">' + html + "</div>");
     document.getElementById("chatbarra").hidden = ui.aba !== "chat";
     if (ui.aba === "chat") { var cp = document.getElementById("corpo"); if (cp._fimChat !== V.chat.length) { cp._fimChat = V.chat.length; cp.scrollTop = cp.scrollHeight; } }
 
@@ -797,7 +828,12 @@
       h += '<button class="local' + (v >= l.total ? " esgotado" : "") + '" data-a="examinar" data-id="' + l.id + '">' + (tem3D(V.caso.id) ? '<span class="selo3d">3D</span>' : "") + '<span class="ic">' + l.icone + '</span><span class="n">' + esc(l.nome) +
         '</span><span class="p">' + (v >= l.total ? "✓ examinado" : v + "/" + l.total + " pistas") + "</span></button>";
     });
-    h += '</div><h2 class="secao">Interrogar um suspeito</h2>' + listaSuspeitos(true);
+    h += '</div><h2 class="secao">Interrogar um suspeito</h2>';
+    if (V.iaPerguntas) h += '<div class="mudo pequeno" style="margin:-4px 0 8px">💬 Toque num suspeito para ouvir o depoimento ou fazer uma <b>pergunta livre</b>.</div>';
+    else if (V.souHost && !V.solo) h += '<div class="mudo pequeno" style="margin:-4px 0 8px">💬 Quer fazer perguntas livres aos suspeitos? <button class="link" data-a="iaConfig">Ative a IA (Gemini)</button></div>';
+    else if (V.souHost) h += '<div class="mudo pequeno" style="margin:-4px 0 8px">💬 Para fazer perguntas livres aos suspeitos, <button class="link" data-a="iaConfig">ative a IA (Gemini)</button>.</div>';
+    if (V.perguntando && V.perguntando.length) h += '<div class="cartao pequeno pensando">⏳ Esperando a resposta da sua pergunta…</div>';
+    h += listaSuspeitos(true);
     return h;
   }
 
@@ -809,6 +845,8 @@
     r += '<span class="alfinete"></span><div class="origem">' + esc(q.origem) + '</div><div class="texto">' + esc(q.texto) + '</div><div class="rodape"><span class="esp">' +
       (q.novidade ? "📢 Delegacia · rodada " + q.rodada : "por <b>" + esc(q.autor) + "</b> · rodada " + q.rodada) + "</span>";
     if (q.podeConfirmar) r += '<button class="btn pequeno" data-a="confirmar" data-id="' + q.id + '">👁️ Eu também vi</button>';
+    var hq = V.mural && V.mural.tempo && V.mural.tempo[q.id];
+    r += '<button class="btn pequeno hora-btn" data-a="cartaoMural" data-id="' + q.id + '">🕐 ' + (hq ? esc(hq) : "Hora") + "</button>";
     if (V.fotosRestantes > 0 && V.fase === "rodada" && !q.novidade && q.autorId !== V.meuId && localDaOrigem(q.origem))
       r += '<button class="btn pequeno camera" data-a="fotografar" data-id="' + q.id + '">📷 Fotografar</button>';
     r += "</div>";
@@ -821,12 +859,145 @@
     return V.caso.locais.filter(function (l) { return origem === l.icone + " " + l.nome || origem === l.nome; })[0] || null;
   }
   function abaQuadro() {
-    var h = '<div class="mudo pequeno" style="margin-bottom:12px">Pistas que o grupo compartilhou. Se você encontrou a mesma pista, toque em <b>Eu também vi</b>: o jogo confere no seu caderno, então pista confirmada é pista verdadeira.</div>';
+    var vista = ui.vistaQuadro || "pistas";
+    var h = '<div class="segmento vistas-quadro">' + [["pistas", "📋 Pistas"], ["mural", "🧵 Mural"], ["tempo", "🕐 Linha do tempo"]].map(function (x) {
+      return '<button data-a="vistaQuadro" data-v="' + x[0] + '" class="' + (vista === x[0] ? "sel" : "") + '">' + x[1] + "</button>";
+    }).join("") + "</div>";
+    if (vista === "mural") return h + abaMural();
+    if (vista === "tempo") return h + abaTempo();
+    h += '<div class="mudo pequeno" style="margin:12px 0">Pistas que o grupo compartilhou. Se você encontrou a mesma pista, toque em <b>Eu também vi</b>: o jogo confere no seu caderno, então pista confirmada é pista verdadeira.</div>';
     if (!V.quadro.length) return h + '<div class="quadro-mural"><div class="vazio">O quadro está vazio.<br>Publique suas descobertas pelo Caderno.</div></div>';
     var html = V.quadro.slice().reverse().map(cartaoPista).join("");
     marcarDepois(ui.animQ, V.quadro.filter(function (q) { return !ui.animQ[q.id]; }).map(function (q) { return q.id; }));
     marcarDepois(ui.animC, V.quadro.filter(function (q) { return q.confirmados.length && !ui.animC[q.id]; }).map(function (q) { return q.id; }));
     return h + '<div class="quadro-mural">' + html + "</div>";
+  }
+
+  /* ---------- Mural do detetive: cartões que todos arrastam, fios vermelhos e linha do tempo ---------- */
+  var MURAL_ALT = 1200, CARTAO_ALT = 92;
+  function itensMural() {
+    var l = [{ id: "vitima", tit: "🕯️ Vítima", txt: V.caso.vitima, cls: "vitima" }];
+    V.caso.suspeitos.forEach(function (x) { l.push({ id: "s:" + x.id, tit: "👤 " + x.nome, txt: x.ocupacao, cls: "suspeito", ini: iniciais(x.nome) }); });
+    V.quadro.forEach(function (q) { l.push({ id: q.id, tit: q.origem, txt: q.texto, cls: q.novidade ? "novidade" : (q.confirmados.length ? "conf" : ""), autor: q.novidade ? "Delegacia" : q.autor }); });
+    var m = V.mural || { pos: {} };
+    l.forEach(function (it, i) {
+      var p = m.pos[it.id];
+      if (!p) {
+        var col = i % 3, lin = Math.floor(i / 3);
+        p = [col / 2, Math.min(1, lin * 0.1 + (col === 1 ? 0.02 : 0))];
+      }
+      it.x = p[0]; it.y = p[1];
+      it.hora = (m.tempo || {})[it.id] || "";
+    });
+    return l;
+  }
+  function itemMural(id) { return itensMural().filter(function (x) { return x.id === id; })[0] || null; }
+  function pino(it) { return [it.x * 690 + 155, it.y * (MURAL_ALT - CARTAO_ALT) + 9]; }
+  function abaMural() {
+    var itens = itensMural(), porId = {};
+    itens.forEach(function (it) { porId[it.id] = it; });
+    var fios = ((V.mural && V.mural.fios) || []).filter(function (f) { return porId[f[0]] && porId[f[1]]; });
+    var h = '<div class="mural-barra"><button class="btn pequeno' + (ui.ligando ? " latao" : "") + '" data-a="modoFio">🧵 ' + (ui.ligando ? "Ligando… (toque para parar)" : "Ligar com fio") + "</button>" +
+      '<span class="mudo pequeno">' + (ui.ligando ? (ui.fioDe ? "Agora toque no 2º cartão." : "Toque no 1º cartão.") : "Arraste os cartões. Toque num cartão para ver, marcar a hora ou cortar fios.") + "</span></div>";
+    h += '<div class="mural' + (ui.ligando ? " ligando" : "") + '" id="mural" style="height:' + MURAL_ALT + 'px">';
+    h += '<svg class="mfios" viewBox="0 0 1000 ' + MURAL_ALT + '" preserveAspectRatio="none">' + fios.map(function (f) {
+      var a = pino(porId[f[0]]), b = pino(porId[f[1]]);
+      var mx = (a[0] + b[0]) / 2, my = Math.max(a[1], b[1]) + 30 + Math.abs(a[0] - b[0]) * 0.06;
+      return '<path data-f="' + esc(f[0]) + "|" + esc(f[1]) + '" d="M' + a[0] + " " + a[1] + " Q" + mx + " " + my + " " + b[0] + " " + b[1] + '" vector-effect="non-scaling-stroke"/>';
+    }).join("") + "</svg>";
+    itens.forEach(function (it) {
+      h += '<div class="mcartao ' + it.cls + (ui.fioDe === it.id ? " sel" : "") + '" data-mid="' + esc(it.id) + '" style="left:' + (it.x * 69).toFixed(2) + "%;top:" + Math.round(it.y * (MURAL_ALT - CARTAO_ALT)) + 'px">' +
+        '<span class="pino"></span>' + (it.hora ? '<span class="mhora">' + esc(it.hora) + "</span>" : "") +
+        '<div class="mt">' + esc(it.tit) + '</div><div class="mx">' + esc(it.txt) + "</div></div>";
+    });
+    return h + "</div>";
+  }
+  function minutos(h) { var p = h.split(":"), m = +p[0] * 60 + +p[1]; return m < 6 * 60 ? m + 1440 : m; }
+  function abaTempo() {
+    var itens = itensMural().filter(function (it) { return it.hora; }).sort(function (a, b) { return minutos(a.hora) - minutos(b.hora); });
+    var h = '<div class="mudo pequeno" style="margin:12px 0">A linha do tempo do grupo. Toque num cartão do <b>Mural</b> ou no botão 🕐 de uma pista para marcar a hora em que aconteceu. Horários da madrugada ficam depois da noite.</div>';
+    if (!itens.length) return h + '<div class="vazio">Nenhum horário marcado ainda.</div>';
+    h += '<div class="linha-tempo">';
+    itens.forEach(function (it) {
+      h += '<button class="lt-item" data-a="cartaoMural" data-id="' + esc(it.id) + '"><span class="lt-hora">' + esc(it.hora) + '</span><span class="lt-ponto"></span><span class="lt-txt"><b>' + esc(it.tit) + "</b><br>" + esc(it.txt) + "</span></button>";
+    });
+    return h + "</div>";
+  }
+  function abrirCartaoMural(id) {
+    var it = itemMural(id);
+    if (!it) return;
+    var fios = ((V.mural && V.mural.fios) || []).filter(function (f) { return f[0] === id || f[1] === id; });
+    var h = '<div class="papel ' + it.cls + '"><span class="alfinete"></span><div class="origem">' + esc(it.tit) + '</div><div class="texto">' + esc(it.txt) + "</div>" + (it.autor ? '<div class="rodape"><span class="esp">por <b>' + esc(it.autor) + "</b></span></div>" : "") + "</div>";
+    h += '<h2 class="secao">🕐 Na linha do tempo</h2><div class="linha-flex"><input id="horaMural" class="entrada" type="time" value="' + esc(it.hora) + '" style="flex:1"><button class="btn latao" data-a="salvarHora" data-id="' + esc(id) + '" style="width:auto">Marcar</button>' +
+      (it.hora ? '<button class="btn fantasma" data-a="tirarHora" data-id="' + esc(id) + '" style="width:auto">Tirar</button>' : "") + "</div>";
+    if (fios.length) {
+      h += '<h2 class="secao">🧵 Ligado a</h2>';
+      fios.forEach(function (f) {
+        var outro = itemMural(f[0] === id ? f[1] : f[0]);
+        if (outro) h += '<div class="fio-linha"><span><b>' + esc(outro.tit) + '</b> <span class="mudo pequeno">· fio de ' + esc(f[2] || "?") + '</span></span><button class="btn pequeno" data-a="cortarFio" data-a1="' + esc(f[0]) + '" data-a2="' + esc(f[1]) + '">✂️ Cortar</button></div>';
+      });
+    }
+    h += '<div class="pilha" style="margin-top:14px"><button class="btn" data-a="fioDaqui" data-id="' + esc(id) + '">🧵 Ligar a outro cartão</button><button class="btn fantasma" data-a="fechar">Fechar</button></div>';
+    abrirModal(h);
+  }
+  function enviarMural(a, cb) { enviarAcao(Object.assign({ tipo: "mural" }, a), cb); }
+
+  // arrastar cartões (toque ou mouse)
+  (function () {
+    var arr = null;
+    document.addEventListener("pointerdown", function (e) {
+      var c = e.target.closest && e.target.closest(".mcartao");
+      if (!c || !V || !V.mural && !V.quadro) return;
+      var mural = document.getElementById("mural");
+      if (!mural) return;
+      arr = { c: c, id: c.dataset.mid, x0: e.clientX, y0: e.clientY, l0: c.offsetLeft, t0: c.offsetTop, mov: false, pid: e.pointerId, mural: mural };
+      try { c.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+    document.addEventListener("pointermove", function (e) {
+      if (!arr || e.pointerId !== arr.pid) return;
+      var dx = e.clientX - arr.x0, dy = e.clientY - arr.y0;
+      if (!arr.mov && Math.abs(dx) + Math.abs(dy) < 8) return;
+      if (!arr.mov) { arr.mov = true; ui.arrastando = true; arr.c.classList.add("arrastando"); }
+      var W = arr.mural.clientWidth, cw = arr.c.offsetWidth;
+      var l = Math.max(0, Math.min(W - cw, arr.l0 + dx)), t = Math.max(0, Math.min(MURAL_ALT - CARTAO_ALT, arr.t0 + dy));
+      arr.c.style.left = l + "px"; arr.c.style.top = t + "px";
+      arr.fx = W - cw > 0 ? l / (W - cw) : 0; arr.fy = t / (MURAL_ALT - CARTAO_ALT);
+      // fios acompanham o cartão
+      var it = { x: arr.fx, y: arr.fy };
+      arr.mural.querySelectorAll("path[data-f]").forEach(function (pth) {
+        var par = pth.getAttribute("data-f").split("|");
+        if (par[0] !== arr.id && par[1] !== arr.id) return;
+        var outro = itemMural(par[0] === arr.id ? par[1] : par[0]); if (!outro) return;
+        var a = pino(it), b = pino(outro), mx = (a[0] + b[0]) / 2, my = Math.max(a[1], b[1]) + 30 + Math.abs(a[0] - b[0]) * 0.06;
+        pth.setAttribute("d", "M" + a[0] + " " + a[1] + " Q" + mx + " " + my + " " + b[0] + " " + b[1]);
+      });
+      e.preventDefault();
+    }, { passive: false });
+    function soltar(e) {
+      if (!arr || e.pointerId !== arr.pid) return;
+      var a = arr; arr = null;
+      ui.arrastando = false;
+      a.c.classList.remove("arrastando");
+      if (a.mov) {
+        if (e.type === "pointercancel") { render(); return; }
+        enviarMural({ op: "mover", id: a.id, x: a.fx, y: a.fy }, function () { render(); });
+        return;
+      }
+      tocarCartaoMural(a.id);
+    }
+    document.addEventListener("pointerup", soltar);
+    document.addEventListener("pointercancel", soltar);
+  })();
+  function tocarCartaoMural(id) {
+    if (!ui.ligando) { abrirCartaoMural(id); return; }
+    if (!ui.fioDe) { ui.fioDe = id; vibrar(20); render(); return; }
+    if (ui.fioDe === id) { ui.fioDe = null; render(); return; }
+    var de = ui.fioDe;
+    ui.fioDe = null;
+    enviarMural({ op: "ligar", a: de, b: id }, function (r) {
+      if (r && r.ok) { vibrar(30); som("alfinete"); toast(r.removido ? "✂️ Fio cortado" : "🧵 Fio ligado"); }
+      render();
+    });
   }
 
   function abaCaderno() {
@@ -1035,6 +1206,9 @@
         "<p><b>📷 Fotógrafo:</b> quem tira o Fotógrafo tem uma câmera com 2 fotos. No Quadro, ele fotografa uma pista que veio de um local e descobre se ela existe mesmo lá. Só ele vê o resultado.</p>" +
         "<p><b>Em dupla:</b> com só 2 pessoas, crie a sala e escolha <b>🤖 Cúmplice robô</b> nas regras da mesa. Detetives robôs entram no jogo e um deles é o Cúmplice.</p>" +
         "<p><b>Sozinho:</b> no botão <b>Jogar sozinho</b>, você investiga com 3 detetives robôs, sem internet. Um deles é o Cúmplice: desconfie de pista que ninguém confirma e preste atenção quando um robô diz que não viu nada no lugar.</p>" +
+        "<p><b>💬 Pergunta livre:</b> se o anfitrião ativou a IA (Gemini), toque num suspeito e escreva qualquer pergunta. Ele responde no personagem e gasta 1 ação. Cuidado: o culpado mente!</p>" +
+        "<p><b>🧵 Mural:</b> no Quadro, a aba Mural mostra as pistas, os suspeitos e a vítima como cartões. Todos podem arrastar, ligar com fios vermelhos e marcar o horário de cada coisa, que vai para a Linha do tempo.</p>" +
+        "<p><b>📨 Convite por link:</b> em Convidar amigos, mande o link pelo WhatsApp. Quem tocar nele entra direto na sala (ou baixa o jogo, se ainda não tiver).</p>" +
         "<p><b>Dica:</b> joguem numa chamada de voz ou vídeo no WhatsApp. Discutir é metade da graça!</p></div>" +
         '<button class="btn prim" data-a="fechar">Entendi</button>');
     },
@@ -1084,13 +1258,14 @@
         acoes.iaConfig();
         var st2 = document.getElementById("iaStatus");
         if (st2) st2.innerHTML = '<span class="certo">✅ Chave funcionando! Modelo: ' + esc(atual) + "</span>";
+        if (modo === "host" && H) hostDifundir();
         if (ui.iaDepois) { var o = ui.iaDepois; ui.iaDepois = null; setTimeout(function () { acoes.iaGerar({ dataset: { origem: o } }); }, 900); }
       }).catch(function (e) {
         var st2 = document.getElementById("iaStatus");
         if (st2) st2.innerHTML = '<span class="errado">' + esc(e.message) + "</span>";
       });
     },
-    iaApagar: function () { IA.salvarConfig({ chave: "", modelo: "" }); ui.iaModelos = []; acoes.iaConfig(); toast("Chave apagada deste celular."); },
+    iaApagar: function () { IA.salvarConfig({ chave: "", modelo: "" }); ui.iaModelos = []; acoes.iaConfig(); toast("Chave apagada deste celular."); if (modo === "host" && H) hostDifundir(); },
     iaRemover: function (el) {
       var id = el.dataset.id;
       IA.remover(id);
@@ -1145,9 +1320,7 @@
       else if (k === "tres" || k === "leve") { var p3 = pref3d(); p3[k === "tres" ? "ativo" : "leve"] = on; LS.set("ca_3d", p3); if (V) render(); }
       else if (window.Som) { Som.definir(k, on); if (on && k === "efeitos") som("carimbo"); }
     },
-    convidar: function () {
-      compartilhar("🔍 Bora jogar CASO ABERTO! Abra o app, toque em \"Entrar\" e use o código da sala: " + V.codigo);
-    },
+    convidar: function () { compartilhar(textoConvite()); },
     remover: function (el) {
       var j = V.jogadores.filter(function (x) { return x.id === el.dataset.id; })[0];
       if (!j) return;
@@ -1188,10 +1361,10 @@
     encerrarOk: function () { fecharModal(); enviarAcao({ tipo: "encerrarVotacao" }); },
     menu: function () {
       abrirModal('<div class="pilha"><button class="btn" data-a="regras">📖 Como jogar</button><button class="btn" data-a="config">🎵 Som e efeitos</button>' +
-        (V.solo ? "" : '<button class="btn" data-a="convidarJogo">📨 Ver código da sala (' + esc(V.codigo) + ')</button>') +
+        (V.solo ? "" : '<button class="btn" data-a="convidarJogo">📨 Convidar de volta · sala ' + esc(V.codigo) + "</button>") +
         '<button class="btn fantasma" data-a="sair">🚪 ' + (V.solo ? "Sair do caso" : "Sair da sala") + '</button><button class="btn fantasma" data-a="fechar">Voltar</button></div>');
     },
-    convidarJogo: function () { fecharModal(); toast("Código da sala: " + V.codigo); },
+    convidarJogo: function () { fecharModal(); compartilhar(textoConvite()); },
     sair: function () {
       abrirModal("<p>" + (H && H.solo ? "Sair do caso? A investigação será descartada." : modo === "host" ? "Você é o anfitrião. Se sair, <b>a sala fecha para todos</b>." : "Sair da sala?") + "</p>" +
         '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Ficar</button><button class="btn prim" data-a="sairOk">Sair</button></div>');
@@ -1199,7 +1372,37 @@
     sairOk: function () { sairDaSala(); },
     aba: function (el) { ui.aba = el.dataset.id; var c = document.getElementById("corpo"); if (c) { c._h = null; c.scrollTop = 0; } render(); },
     examinar: function (el) { if (tem3D(V.caso.id)) abrir3D(el.dataset.id); else investigar("local", el.dataset.id); },
-    interrogar: function (el) { investigar("suspeito", el.dataset.id); },
+    interrogar: function (el) {
+      if (!V.iaPerguntas) { investigar("suspeito", el.dataset.id); return; }
+      abrirInterrogatorio(el.dataset.id);
+    },
+    vistaQuadro: function (el) { ui.vistaQuadro = el.dataset.v; ui.ligando = false; ui.fioDe = null; var c = document.getElementById("corpo"); if (c) c._h = null; render(); },
+    modoFio: function () { ui.ligando = !ui.ligando; ui.fioDe = null; render(); },
+    cartaoMural: function (el) { abrirCartaoMural(el.dataset.id); },
+    fioDaqui: function (el) { fecharModal(); ui.vistaQuadro = "mural"; ui.ligando = true; ui.fioDe = el.dataset.id; render(); toast("Agora toque no cartão que quer ligar."); },
+    cortarFio: function (el) { enviarMural({ op: "ligar", a: el.dataset.a1, b: el.dataset.a2 }, function (r) { if (r && r.ok) { toast("✂️ Fio cortado"); fecharModal(); } }); },
+    salvarHora: function (el) {
+      var v = (document.getElementById("horaMural") || {}).value || "";
+      if (!v) { toast("Escolha a hora.", true); return; }
+      enviarMural({ op: "hora", id: el.dataset.id, hora: v }, function (r) { if (r && r.ok) { fecharModal(); som("alfinete"); toast("🕐 Marcado às " + v); } });
+    },
+    tirarHora: function (el) { enviarMural({ op: "hora", id: el.dataset.id, hora: "" }, function (r) { if (r && r.ok) fecharModal(); }); },
+    depoimento: function (el) { fecharModal(); investigar("suspeito", el.dataset.id); },
+    perguntar: function (el) {
+      var t = document.getElementById("perguntaTxt"), txt = t ? t.value.trim() : "";
+      if (txt.length < 4) { toast("Escreva a sua pergunta.", true); if (t) t.focus(); return; }
+      if (V.minhasAcoes <= 0) { toast("Suas ações desta rodada acabaram. Espere a próxima.", true); return; }
+      var sus = V.caso.suspeitos.filter(function (x) { return x.id === el.dataset.id; })[0] || {};
+      ui.rascunhoPergunta = "";
+      enviarAcao({ tipo: "perguntar", id: el.dataset.id, texto: txt }, function (r) {
+        if (r && r.ok) { fecharModal(); som("papel"); toast("⏳ " + sus.nome + " está pensando na resposta…"); }
+      });
+    },
+    sugestao: function (el) { var t = document.getElementById("perguntaTxt"); if (t) { t.value = el.dataset.t; ui.rascunhoPergunta = t.value; t.focus(); } },
+    verResposta: function (el) {
+      var e = (V.caderno || []).filter(function (x) { return x.pid === el.dataset.id; })[0];
+      if (e) mostrarResposta(e);
+    },
     publicar: function (el) { enviarAcao({ tipo: "publicar", pid: el.dataset.id }, function (r) { if (r && r.ok) { som("alfinete"); toast("📌 Publicada no quadro"); } }); },
     publicarModal: function (el) { fecharModal(); acoes.publicar(el); },
     confirmar: function (el) { enviarAcao({ tipo: "confirmar", itemId: el.dataset.id }, function (r) { if (r && r.ok) { vibrar(30); som("carimbo"); toast("✔ Confirmada"); } }); },
@@ -1299,6 +1502,41 @@
     esquecerSolo: function () { LS.del("ca_solo"); ui.shell = null; render(); }
   };
 
+  function abrirInterrogatorio(id) {
+    var s = V.caso.suspeitos.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    var n = (V.vistos && V.vistos["d:" + id]) || 0, acoesOk = V.minhasAcoes > 0;
+    var pend = (V.perguntando || [])[0];
+    var minhas = (V.caderno || []).filter(function (e) { return e.tipo === "pergunta" && e.sus === id; });
+    var sug = ["Onde você estava na hora do crime?", "Quem você viu perto da vítima?", "Por que você discutiu com a vítima?", "O que você acha que aconteceu?"];
+    var h = '<div class="interroga-cab"><div class="retrato">' + iniciais(s.nome) + '</div><div><div class="n">' + esc(s.nome) + '</div><div class="mudo pequeno">' + s.idade + " anos · " + esc(s.ocupacao) + "</div></div></div>";
+    h += '<button class="btn" data-a="depoimento" data-id="' + id + '"' + (n >= 2 || !acoesOk ? " disabled" : "") + ">🗣️ " + (n >= 2 ? "Depoimento já ouvido" : "Ouvir o depoimento (" + n + "/2)") + "</button>";
+    h += '<h2 class="secao">💬 Pergunta livre</h2>';
+    if (pend) h += '<div class="cartao pequeno pensando">⏳ ' + esc((V.caso.suspeitos.filter(function (x) { return x.id === pend.sus; })[0] || {}).nome || "O suspeito") + " está pensando na sua pergunta: <i>" + esc(pend.pergunta) + "</i></div>";
+    else {
+      h += '<textarea id="perguntaTxt" class="entrada" maxlength="200" rows="2" placeholder="Ex.: Onde você estava às 22h?">' + esc(ui.rascunhoPergunta || "") + "</textarea>";
+      h += '<div class="sugestoes">' + sug.map(function (t) { return '<button class="chip" data-a="sugestao" data-t="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") + "</div>";
+      h += '<button class="btn prim" data-a="perguntar" data-id="' + id + '"' + (acoesOk ? "" : " disabled") + ">💬 Perguntar · gasta 1 ação</button>";
+    }
+    h += '<p class="mudo pequeno">' + esc(s.nome.split(" ")[0]) + " responde no personagem, com a IA. Atenção: o culpado pode mentir!</p>";
+    if (minhas.length) h += '<h2 class="secao">Suas perguntas a ' + esc(s.nome.split(" ")[0]) + "</h2>" + minhas.map(function (e) {
+      return '<div class="papel"><div class="texto"><b>Você:</b> ' + esc(e.pergunta) + "<br><b>" + esc(s.nome.split(" ")[0]) + ":</b> " + esc(e.resposta) + "</div></div>";
+    }).join("");
+    h += '<button class="btn fantasma" data-a="fechar" style="margin-top:10px">Voltar</button>';
+    abrirModal(h);
+    var t = document.getElementById("perguntaTxt");
+    if (t) t.addEventListener("input", function () { ui.rascunhoPergunta = t.value; });
+  }
+  function mostrarResposta(e) {
+    var s = V.caso.suspeitos.filter(function (x) { return x.id === e.sus; })[0] || { nome: "Suspeito" };
+    vibrar(50); som("papel");
+    var pub = V.publicadas && V.publicadas[e.pid];
+    abrirModal('<div class="interroga-cab"><div class="retrato">' + iniciais(s.nome) + '</div><div><div class="n">' + esc(s.nome) + '</div><div class="mudo pequeno">respondeu à sua pergunta</div></div></div>' +
+      '<div class="papel"><span class="alfinete"></span><div class="origem">Você perguntou</div><div class="texto"><i>' + esc(e.pergunta) + '</i></div></div>' +
+      '<div class="papel resposta"><div class="origem">' + esc(s.nome) + ' disse</div><div class="texto">' + esc(e.resposta) + "</div></div>" +
+      '<div class="pilha" style="margin-top:14px">' + (pub ? "" : '<button class="btn prim" data-a="publicarModal" data-id="' + esc(e.pid) + '">📌 Publicar no quadro</button>') + '<button class="btn fantasma" data-a="fechar">Guardar só no meu caderno</button></div>');
+  }
+
   function investigar(alvo, id) {
     if (V.minhasAcoes <= 0) { toast("Suas ações desta rodada acabaram. Espere a próxima.", true); return; }
     var esgot = alvo === "local" ? (V.vistos["l:" + id] || 0) >= 2 : (V.vistos["d:" + id] || 0) >= 2;
@@ -1381,8 +1619,89 @@
   // a cada 4 s, atualiza a faixa de conexão (para mostrar "esperando o anfitrião" na hora certa)
   setInterval(function () { if (!conectado && V) pinta("faixa", faixa()); }, 4000);
 
+  /* ---------------- Convite por link ---------------- */
+  // Chamado pelo Android quando alguém toca num link de convite (casoaberto://entrar?c=ABCD)
+  window.abrirConvite = function (cod) {
+    try { if (window.Android && Android.convite) Android.convite(); } catch (e) {}
+    cod = String(cod || "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (cod.length !== 4) return;
+    if (V && V.codigo === cod) { toast("Você já está na sala " + cod + "."); return; }
+    if (V || modo) {
+      ui.conviteCod = cod;
+      abrirModal("<p>Você recebeu um convite para a sala <b class=\"maquina\">" + esc(cod) + "</b>.</p><p class=\"mudo pequeno\">Para entrar nela, você sai da partida em que está agora.</p>" +
+        '<div class="linha-flex"><button class="btn fantasma" data-a="fechar">Ficar aqui</button><button class="btn prim" data-a="aceitarConvite">Entrar na sala</button></div>');
+      return;
+    }
+    entrarPorConvite(cod);
+  };
+  function entrarPorConvite(cod) {
+    if (!meuNome) {
+      ui.shell = null; render();
+      var c = document.getElementById("codigo"); if (c) c.value = cod;
+      var n = document.getElementById("nome"); if (n) n.focus();
+      toast("Convite para a sala " + cod + ": digite seu nome e toque em Entrar.");
+      return;
+    }
+    ui.carregando = "Entrando na sala " + cod + "…";
+    conectarCliente(cod);
+  }
+  acoes.aceitarConvite = function () {
+    var cod = ui.conviteCod; ui.conviteCod = null; fecharModal();
+    if (!cod) return;
+    sairDaSalaSilencioso();
+    entrarPorConvite(cod);
+  };
+  function sairDaSalaSilencioso() {
+    if (modo === "host" && H && !H.solo) { try { H.rede.fechar(); } catch (e) {} LS.del("ca_host"); }
+    if (modo === "cliente") LS.del("ca_cliente");
+    sairParaInicio();
+  }
+
+  /* ---------------- Aviso de versão nova ---------------- */
+  var REPO_API = "https://api.github.com/repos/rhmwmdjg-wq/caso-aberto/releases/latest";
+  function versaoInstalada() { try { return window.Android && Android.versao ? Number(Android.versao()) || 0 : 0; } catch (e) { return 0; } }
+  function verificarAtualizacao(forcar) {
+    var atual = versaoInstalada();
+    if (!atual && !forcar) return;
+    var cache = LS.get("ca_atualiz", null);
+    function aplicar(n, avisar) {
+      ui.novaVersao = n > atual ? n : 0;
+      if (ui.novaVersao) {
+        if (!V) { ui.shell = null; render(); }
+        else if (avisar) toast("⬇️ Saiu a versão 1." + n + " do jogo. Atualize quando terminar a partida.");
+      } else if (forcar) toast(atual ? "✅ Você já tem a versão mais nova (1." + atual + ")." : "Não deu para conferir a versão.");
+    }
+    if (!forcar && cache && Date.now() - cache.ts < 3 * 3600e3) { aplicar(cache.n, false); return; }
+    fetch(REPO_API, { headers: { Accept: "application/vnd.github+json" } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      var m = j && /(\d+)\.(\d+)/.exec(j.tag_name || "");
+      if (!m) { if (forcar) toast("Não deu para conferir agora. Tente mais tarde.", true); return; }
+      var n = Number(m[2]);
+      var avisar = !cache || cache.n !== n;
+      LS.set("ca_atualiz", { ts: Date.now(), n: n });
+      aplicar(n, avisar);
+    }).catch(function () { if (forcar) toast("Sem internet para conferir a versão.", true); });
+  }
+  function avisoAtualizacao() {
+    if (!ui.novaVersao || ui.dispensouVersao === ui.novaVersao) return "";
+    return '<div class="aviso-atualizar"><b>⬇️ Versão nova do jogo: 1.' + ui.novaVersao + '</b><div class="mudo pequeno">Você está na 1.' + versaoInstalada() + '. Atualize para ter as melhorias e correções. Seus amigos também precisam atualizar.</div>' +
+      '<div class="linha-flex"><button class="btn prim pequeno" data-a="baixarVersao">Baixar e instalar</button><button class="btn fantasma pequeno" data-a="dispensarVersao">Depois</button></div></div>';
+  }
+  acoes.baixarVersao = function () {
+    var url = "https://github.com/rhmwmdjg-wq/caso-aberto/releases/download/v1." + ui.novaVersao + "/CasoAberto.apk";
+    if (window.Android && Android.abrirLink) Android.abrirLink(url); else window.open(url, "_blank");
+    toast("Baixando… Depois, abra o arquivo CasoAberto.apk para instalar por cima.");
+  };
+  acoes.dispensarVersao = function () { ui.dispensouVersao = ui.novaVersao; ui.shell = null; render(); };
+  acoes.procurarVersao = function () { verificarAtualizacao(true); };
+  setTimeout(function () { verificarAtualizacao(false); }, 2500);
+  setInterval(function () { verificarAtualizacao(false); }, 3 * 3600e3);
+
   // Ao abrir o app, volta sozinho para a sala em que a pessoa estava
   (function voltarSozinho() {
+    var conv = "";
+    try { conv = window.Android && Android.convite ? Android.convite() : ""; } catch (e) {}
+    if (!conv) conv = ((/[?&]sala=([A-Za-z]{4})/.exec(location.search) || [])[1] || "");
+    if (conv) { ui.shell = null; render(); entrarPorConvite(conv.toUpperCase()); return; }
     var agora = Date.now(), lim = 3 * 3600e3;
     var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null);
     if (host && host.estado && agora - host.ts < lim) {
