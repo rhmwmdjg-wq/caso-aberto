@@ -160,6 +160,8 @@
       case "fotografar": return this.fotografar(jid, a.itemId);
       case "perguntar": return this.perguntar(jid, a);
       case "mural": return this.muralAcao(jid, a);
+      case "pedirPrisao": return this.pedirPrisao(jid, a);
+      case "votarPrisao": return this.votarPrisao(jid, !!a.apoio);
     }
     return { ok: false, erro: "Ação inválida." };
   };
@@ -346,12 +348,13 @@
   P.avancar = function () {
     var s = this.s, p = s.partida;
     if (!p) return { ok: false };
+    if (p.prisao) return { ok: false, erro: "Espere a votação do pedido de prisão terminar." };
     if (s.fase === "intro" || (s.fase === "rodada" && p.rodada < p.totalRodadas)) {
       p.rodada++;
       s.fase = "rodada";
       var caso = this.caso();
       var self = this;
-      s.ordem.forEach(function (id) { p.acoes[id] = p.acoesPorRodada; });
+      s.ordem.forEach(function (id) { p.acoes[id] = (p.afastados && p.afastados[id]) ? 0 : p.acoesPorRodada; });
       p.fimRodadaEm = s.config.tempoRodada > 0 ? this.agora() + s.config.tempoRodada * 1000 : 0;
       var nov = caso.novidades[p.rodada];
       if (nov) {
@@ -377,6 +380,7 @@
 
   P.tick = function () {
     var s = this.s, p = s.partida;
+    if (p && p.prisao && this.agora() >= p.prisao.ate) { this.decidirPrisao(true); return true; }
     if (s.fase === "rodada" && p && p.fimRodadaEm && this.agora() >= p.fimRodadaEm) {
       this.sistema("O tempo da rodada acabou.");
       this.avancar();
@@ -410,6 +414,7 @@
     if (vistasAqui.length >= lista.length) return { ok: false, erro: "Você já descobriu tudo o que havia aqui." };
     var n = -1;
     if (typeof a.indice === "number" && a.indice >= 0 && a.indice < lista.length) {
+      if ((p.destruidas || []).indexOf(chave + ":" + a.indice) >= 0) return { ok: false, erro: "Essa pista foi destruída pelo culpado." };
       if (vistasAqui.indexOf(a.indice) >= 0) return { ok: false, erro: "Você já examinou isso. Procure outro objeto." };
       n = a.indice;
     } else {
@@ -513,6 +518,7 @@
     if (s.ordem.indexOf(jid) < 0) return { ok: false };
     var caso = this.caso();
     function existe(lista, id) { return lista.some(function (x) { return x.id === id; }); }
+    if (p.prisaoFinal) a = { culpado: p.prisaoFinal.culpado, metodo: p.prisaoFinal.metodo, motivo: p.prisaoFinal.motivo, cumplice: a.cumplice };
     if (!existe(caso.suspeitos, a.culpado)) return { ok: false, erro: "Escolha o culpado." };
     if (!existe(caso.metodos, a.metodo)) return { ok: false, erro: "Escolha como foi feito." };
     if (!existe(caso.motivos, a.motivo)) return { ok: false, erro: "Escolha o motivo." };
@@ -545,7 +551,7 @@
       cO[v.motivo] = (cO[v.motivo] || 0) + 1;
       if (v.cumplice) cX[v.cumplice] = (cX[v.cumplice] || 0) + 1;
     });
-    var acusado = maisVotado(cC);
+    var acusado = p.prisaoFinal ? p.prisaoFinal.culpado : maisVotado(cC);
     var preso = p.treino ? null : maisVotado(cX);
     var resolvido = acusado === sol.culpado;
     var pego = !p.treino && preso === p.cumpliceId;
@@ -568,6 +574,9 @@
         if (v.motivo === sol.motivo) pts += 1;
         if (!p.treino && v.cumplice === p.cumpliceId) pts += 2;
       }
+      // prisão antecipada: bônus para quem pediu (quanto mais cedo, maior) e multas por prisão errada
+      if (p.prisaoFinal && p.prisaoFinal.autorId === id && p.prisaoFinal.completa) pts += p.prisaoFinal.bonus;
+      if (p.multas && p.multas[id]) pts -= p.multas[id];
       // pistas verdadeiras publicadas que alguém confirmou
       p.quadro.forEach(function (q) {
         if (q.autorId === id && !q.falsa && q.confirmados.length > 0 && id !== p.cumpliceId) pts += 1;
@@ -581,7 +590,9 @@
       acusado: acusado, preso: preso,
       contagem: { culpado: cC, metodo: cM, motivo: cO, cumplice: cX },
       pontosRodada: pontosRodada,
-      votos: p.votos
+      votos: p.votos,
+      prisao: p.prisaoFinal || null,
+      prisoesErradas: p.prisoesErradas || []
     };
     s.fase = "resultado";
     s.partidasJogadas++;
@@ -700,6 +711,121 @@
     return { ok: false };
   };
 
+  /* ---------------- Pedir prisão no meio da investigação ---------------- */
+  var TEMPO_PRISAO = 60000;
+  P.pedirPrisao = function (jid, a) {
+    var s = this.s, p = s.partida, self = this;
+    if (s.fase !== "rodada" || !p) return { ok: false, erro: "Só dá para pedir prisão durante as rodadas." };
+    if (p.rodada < 2) return { ok: false, erro: "Pedidos de prisão só a partir da rodada 2." };
+    if (this.ehRobo(jid)) return { ok: false };
+    if (p.prisao) return { ok: false, erro: "Já há um pedido de prisão em votação." };
+    p.prisoesUsadas = p.prisoesUsadas || {};
+    if (p.prisoesUsadas[jid]) return { ok: false, erro: "Você já fez o seu pedido de prisão nesta partida." };
+    if (p.afastados && p.afastados[jid]) return { ok: false, erro: "Você foi afastado do caso." };
+    var caso = this.caso();
+    function existe(lista, id) { return lista.some(function (x) { return x.id === id; }); }
+    if (!existe(caso.suspeitos, a.culpado)) return { ok: false, erro: "Escolha quem vai ser preso." };
+    if (!existe(caso.metodos, a.metodo)) return { ok: false, erro: "Escolha como foi feito." };
+    if (!existe(caso.motivos, a.motivo)) return { ok: false, erro: "Escolha o motivo." };
+    var eleitores = s.ordem.filter(function (id) { return !self.ehRobo(id) && s.jogadores[id].online; });
+    if (eleitores.indexOf(jid) < 0) eleitores.push(jid);
+    p.prisoesUsadas[jid] = true;
+    p.prisao = { autorId: jid, culpado: a.culpado, metodo: a.metodo, motivo: a.motivo, ate: this.agora() + TEMPO_PRISAO, eleitores: eleitores, votos: {} };
+    p.prisao.votos[jid] = true;
+    var sus = caso.suspeitos.filter(function (x) { return x.id === a.culpado; })[0];
+    if (eleitores.length > 1) this.sistema("⚖️ " + this.nome(jid) + " pediu a prisão de " + sus.nome + "! O grupo tem 60 segundos para apoiar ou recusar.");
+    this.decidirPrisao(false);
+    return { ok: true };
+  };
+
+  P.votarPrisao = function (jid, apoio) {
+    var p = this.s.partida;
+    if (!p || !p.prisao) return { ok: false, erro: "Não há pedido de prisão em votação." };
+    if (p.prisao.eleitores.indexOf(jid) < 0) return { ok: false, erro: "Você não participa desta votação." };
+    if (jid === p.prisao.autorId) return { ok: false };
+    p.prisao.votos[jid] = apoio;
+    this.decidirPrisao(false);
+    return { ok: true };
+  };
+
+  // Decide quando já dá para saber o resultado (ou quando o tempo acabou: quem não votou conta como recusa)
+  P.decidirPrisao = function (tempoAcabou) {
+    var p = this.s.partida, pr = p && p.prisao;
+    if (!pr) return;
+    var n = pr.eleitores.length, sim = 0, nao = 0;
+    pr.eleitores.forEach(function (id) { if (pr.votos[id] === true) sim++; else if (pr.votos[id] === false) nao++; });
+    if (sim * 2 > n) return this.executarPrisao();
+    if (tempoAcabou || (n - nao) * 2 <= n || sim + nao >= n) {
+      var sus = this.caso().suspeitos.filter(function (x) { return x.id === pr.culpado; })[0];
+      p.prisao = null;
+      this.sistema("O grupo recusou o pedido de prisão de " + this.nome(pr.autorId) + " contra " + sus.nome + ". A investigação continua.");
+    }
+  };
+
+  P.executarPrisao = function () {
+    var s = this.s, p = s.partida, pr = p.prisao, caso = this.caso(), sol = caso.solucao, self = this;
+    p.prisao = null;
+    var sus = caso.suspeitos.filter(function (x) { return x.id === pr.culpado; })[0];
+    var apoiadores = pr.eleitores.filter(function (id) { return pr.votos[id] === true && id !== pr.autorId; });
+    if (pr.culpado === sol.culpado) {
+      var completa = pr.metodo === sol.metodo && pr.motivo === sol.motivo;
+      p.prisaoFinal = {
+        autorId: pr.autorId, autor: this.nome(pr.autorId), culpado: pr.culpado, metodo: pr.metodo, motivo: pr.motivo,
+        completa: completa, rodada: p.rodada, bonus: completa ? Math.max(1, p.totalRodadas - p.rodada + 2) : 0
+      };
+      s.fase = "votacao";
+      p.fimRodadaEm = 0;
+      this.sistema("⚖️ Prisão aprovada: " + sus.nome + " foi preso" + (completa ? "!" : ", mas com provas fracas.") + (p.treino ? "" : " Agora votem só em quem é o Cúmplice."));
+      if (p.treino) this.resolver();
+      return;
+    }
+    // prisão errada
+    p.afastados = p.afastados || {};
+    p.afastados[pr.autorId] = true;
+    p.acoes[pr.autorId] = 0;
+    p.multas = p.multas || {};
+    p.multas[pr.autorId] = (p.multas[pr.autorId] || 0) + 2;
+    apoiadores.forEach(function (id) { p.multas[id] = (p.multas[id] || 0) + 1; });
+    p.prisoesErradas = p.prisoesErradas || [];
+    p.prisoesErradas.push({ autor: this.nome(pr.autorId), suspeito: sus.nome, rodada: p.rodada, apoiadores: apoiadores.map(function (id) { return self.nome(id); }) });
+    var local = this.destruirPista();
+    var txt = sus.nome + " foi solto: tem álibi confirmado e NÃO é o culpado." + (local ? " O verdadeiro culpado ficou alerta e destruiu uma pista em " + local + "." : "");
+    var pidN = "solto:" + sus.id;
+    s.ordem.forEach(function (id) { if (p.cadernos[id]) p.cadernos[id].push({ pid: pidN, tipo: "novidade", rodada: p.rodada, origem: "Delegacia", texto: txt }); });
+    p.quadro.push({ id: this.novoId("q"), pid: pidN, autorId: null, autor: "Delegacia", origem: "Prisão errada", texto: txt, rodada: p.rodada, ts: this.agora(), confirmados: [], novidade: true });
+    this.sistema("❌ Prisão errada! " + this.nome(pr.autorId) + " foi afastado do caso" + (apoiadores.length ? " e quem apoiou perdeu 1 ponto" : "") + ".");
+  };
+
+  // Some uma pista de local que ninguém descobriu ainda (marcada como já vista para todos)
+  P.destruirPista = function () {
+    var s = this.s, p = s.partida, caso = this.caso(), self = this;
+    p.vistosIdx = p.vistosIdx || {};
+    function vistas(id, chave) {
+      p.vistosIdx[id] = p.vistosIdx[id] || {};
+      var v = p.vistosIdx[id][chave];
+      if (!v) { v = []; for (var k = 0; k < ((p.vistos[id] || {})[chave] || 0); k++) v.push(k); p.vistosIdx[id][chave] = v; }
+      return v;
+    }
+    var livres = [];
+    caso.locais.forEach(function (l) {
+      var chave = "l:" + l.id;
+      for (var i = 0; i < l.pistas.length; i++) {
+        var alguem = s.ordem.some(function (id) { return p.vistos[id] && vistas(id, chave).indexOf(i) >= 0; });
+        if (!alguem) livres.push({ l: l, i: i, chave: chave });
+      }
+    });
+    if (!livres.length) return null;
+    var e = livres[Math.floor(this.rand() * livres.length)];
+    s.ordem.forEach(function (id) {
+      if (!p.vistos[id]) return;
+      var v = vistas(id, e.chave);
+      v.push(e.i);
+      p.vistos[id][e.chave] = v.length;
+    });
+    p.destruidas = (p.destruidas || []).concat([e.chave + ":" + e.i]);
+    return e.l.icone + " " + e.l.nome;
+  };
+
   /* ---------------- Visão de cada jogador ---------------- */
   P.visao = function (jid) {
     var s = this.s, p = s.partida, self = this;
@@ -717,6 +843,7 @@
         return {
           id: id, nome: j.nome, online: j.online, pontos: j.pontos, pronto: j.pronto, robo: !!j.robo,
           acoes: p ? (p.acoes[id] || 0) : 0,
+          afastado: !!(p && p.afastados && p.afastados[id]),
           votou: !!(p && p.votos[id])
         };
       }),
@@ -773,6 +900,19 @@
       };
     });
     v.mural = p.mural || { pos: {}, fios: [], tempo: {} };
+    v.prisaoUsada = !!(p.prisoesUsadas && p.prisoesUsadas[jid]);
+    v.afastado = !!(p.afastados && p.afastados[jid]);
+    v.prisaoFinal = p.prisaoFinal || null;
+    if (p.prisao) {
+      var pr = p.prisao, sim = 0, nao = 0;
+      pr.eleitores.forEach(function (id) { if (pr.votos[id] === true) sim++; else if (pr.votos[id] === false) nao++; });
+      v.prisao = {
+        autorId: pr.autorId, autor: this.nome(pr.autorId), culpado: pr.culpado, metodo: pr.metodo, motivo: pr.motivo, ate: pr.ate,
+        apoios: sim, recusas: nao, total: pr.eleitores.length,
+        possoVotar: pr.eleitores.indexOf(jid) >= 0 && jid !== pr.autorId,
+        meuVoto: pr.votos[jid] === undefined ? null : pr.votos[jid]
+      };
+    }
     v.perguntando = (p.perguntas || []).filter(function (q) { return q.jid === jid && q.resposta == null; }).map(function (q) { return { sus: q.sus, pergunta: q.pergunta }; });
     v.publicadas = {};
     p.quadro.forEach(function (q) { if (q.pid) v.publicadas[q.pid] = q.autor; });
@@ -788,7 +928,9 @@
           return { id: id, nome: self.nome(id), tipo: p.papeis[id].tipo, esp: self.esp(p.papeis[id].esp) };
         }),
         votos: Object.keys(r.votos).map(function (id) { var x = r.votos[id]; return { id: id, nome: self.nome(id), culpado: x.culpado, metodo: x.metodo, motivo: x.motivo, cumplice: x.cumplice }; }),
-        falsas: p.quadro.filter(function (q) { return q.falsa; }).map(function (q) { return { origem: q.origem, texto: q.texto, autor: q.autor }; })
+        falsas: p.quadro.filter(function (q) { return q.falsa; }).map(function (q) { return { origem: q.origem, texto: q.texto, autor: q.autor }; }),
+        prisao: r.prisao || null,
+        prisoesErradas: r.prisoesErradas || []
       };
     }
     return v;

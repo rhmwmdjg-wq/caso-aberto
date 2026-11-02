@@ -438,6 +438,7 @@
     sairParaInicio();
   }
 
+  function nomeSuspDe(v, id) { var x = v.caso && v.caso.suspeitos.filter(function (y) { return y.id === id; })[0]; return x ? x.nome : ""; }
   function receberVisao(v) {
     var antes = V;
     V = v;
@@ -483,6 +484,16 @@
       antes.quadro.forEach(function (q) { confAntes[q.id] = q.confirmados.length; });
       if (v.quadro.some(function (q) { return confAntes[q.id] != null && q.confirmados.length > confAntes[q.id]; })) som("carimbo");
     }
+    if (v.prisao && !(antes && antes.prisao)) {
+      vibrar(300); som("martelo");
+      if (v.prisao.possoVotar && ui.aba !== "investigar") toast("⚖️ " + v.prisao.autor + " pediu uma prisão! Vote no topo da tela.");
+      var cp = document.getElementById("corpo"); if (cp) cp.scrollTop = 0;
+    }
+    if (antes && antes.prisao && !v.prisao && v.fase === "rodada") {
+      if (v.afastado && !antes.afastado) { vibrar(400); toast("❌ Prisão errada. Você foi afastado do caso.", true); }
+      else if (!v.quadro.some(function (q, i) { return i >= antes.quadro.length && q.origem === "Prisão errada"; })) toast("O grupo recusou o pedido de prisão.");
+    }
+    if (v.prisaoFinal && !(antes && antes.prisaoFinal)) { vibrar(200); som("carimbo"); toast("⚖️ Prisão aprovada! " + nomeSuspDe(v, v.prisaoFinal.culpado) + " foi preso."); }
     if (antes && antes.caderno && v.caderno && v.caderno.length > antes.caderno.length) {
       var respostas = v.caderno.slice(antes.caderno.length).filter(function (e) { return e.tipo === "pergunta"; });
       if (respostas.length) setTimeout(function () { mostrarResposta(respostas[respostas.length - 1]); }, 50);
@@ -599,7 +610,8 @@
     }
     pinta("retomar", retomar);
     pinta("atualizar", avisoAtualizacao());
-    pinta("versao", versaoInstalada() ? 'Versão 1.' + versaoInstalada() + ' · <button class="link" data-a="procurarVersao">procurar atualização</button>' : "");
+    pinta("versao", versaoInstalada() ? 'Versão 1.' + versaoInstalada() + ' · <button class="link" data-a="procurarVersao">procurar atualização</button>'
+      : (/Android/i.test(navigator.userAgent) && !window.Android && !/[?&]local=1/.test(location.search) ? '🌐 Você está jogando pelo navegador. <a href="https://github.com/rhmwmdjg-wq/caso-aberto/releases/latest/download/CasoAberto.apk" target="_blank" rel="noopener" style="color:var(--latao)">Baixar o aplicativo</a>' : ""));
   }
 
   function precisaNome() {
@@ -783,6 +795,7 @@
     else if (ui.aba === "caderno") html = abaCaderno();
     else if (ui.aba === "chat") { html = abaChat(); ui.vistosChat = V.chat.length; }
     else if (ui.aba === "ficha") html = abaFicha();
+    if (V.prisao) html = blocoPrisaoPendente() + html;
     if (!ui.arrastando) pinta("corpo", '<div class="conteudo">' + html + "</div>");
     document.getElementById("chatbarra").hidden = ui.aba !== "chat";
     if (ui.aba === "chat") { var cp = document.getElementById("corpo"); if (cp._fimChat !== V.chat.length) { cp._fimChat = V.chat.length; cp.scrollTop = cp.scrollHeight; } }
@@ -804,6 +817,8 @@
   }
 
   function atualizarRelogio() {
+    var pt = document.getElementById("ppTempo");
+    if (pt && V && V.prisao) { var rs = Math.max(0, Math.round((V.prisao.ate - (Date.now() + offsetRelogio)) / 1000)); pt.textContent = "⏱ " + rs + "s"; }
     var el = document.getElementById("relogio");
     if (!el || !V) return;
     if (!V.fimRodadaEm) { el.textContent = ""; return; }
@@ -812,7 +827,35 @@
     el.className = "relogio" + (resta <= 30 ? " urgente" : "");
   }
 
+  function nomeSusp(id) { var x = V.caso.suspeitos.filter(function (y) { return y.id === id; })[0]; return x ? x.nome : "—"; }
+  function nomeMetodo(id) { var x = V.caso.metodos.filter(function (y) { return y.id === id; })[0]; return x ? x.nome : "—"; }
+  function nomeMotivo(id) { var x = V.caso.motivos.filter(function (y) { return y.id === id; })[0]; return x ? x.nome : "—"; }
+
+  // faixa do pedido de prisão em votação (aparece em todas as abas)
+  function blocoPrisaoPendente() {
+    var pr = V.prisao;
+    if (!pr) return "";
+    var h = '<div class="prisao-pendente"><div class="pp-cab"><span>⚖️ <b>' + esc(pr.autor) + "</b> pediu a prisão de</span>" + '<span class="pp-tempo" id="ppTempo"></span></div>' +
+      '<div class="pp-alvo">' + esc(nomeSusp(pr.culpado)) + '</div><div class="pequeno">' + esc(nomeMetodo(pr.metodo)) + " · " + esc(nomeMotivo(pr.motivo)) + "</div>" +
+      '<div class="pp-placar">👍 ' + pr.apoios + " apoio" + (pr.apoios === 1 ? "" : "s") + " · 👎 " + pr.recusas + " · precisa de mais da metade de " + pr.total + "</div>";
+    if (pr.possoVotar) {
+      h += '<div class="linha-flex"><button class="btn ' + (pr.meuVoto === true ? "prim" : "fantasma") + ' pequeno" data-a="votarPrisao" data-v="1">👍 Apoio</button>' +
+        '<button class="btn ' + (pr.meuVoto === false ? "prim" : "fantasma") + ' pequeno" data-a="votarPrisao" data-v="0">👎 Recuso</button></div>' +
+        '<div class="pequeno" style="opacity:.8;margin-top:6px">Se a prisão estiver errada, quem apoiou perde 1 ponto. E se for o Cúmplice pedindo?</div>';
+    } else if (pr.autorId === V.meuId) h += '<div class="pequeno" style="opacity:.85">Esperando o grupo decidir…</div>';
+    return h + "</div>";
+  }
+  function blocoPedirPrisao() {
+    if (V.fase !== "rodada") return "";
+    if (V.afastado) return '<div class="cartao afastado">🚫 <b>Você foi afastado do caso</b> depois da prisão errada. Não pode mais investigar, mas continua conversando e vota na acusação final.</div>';
+    if (V.prisao) return "";
+    if (V.rodada < 2) return '<div class="mudo pequeno" style="margin-top:14px">⚖️ A partir da rodada 2, se você já souber quem foi, poderá <b>pedir uma prisão</b>.</div>';
+    if (V.prisaoUsada) return '<div class="mudo pequeno" style="margin-top:14px">⚖️ Você já fez seu pedido de prisão nesta partida.</div>';
+    return '<div class="cartao pedir-prisao"><div><b>⚖️ Já sabe quem foi?</b><div class="pequeno mudo">Peça a prisão agora. ' + (V.solo ? "Se acertar, o caso fecha na hora com bônus. Se errar, você é afastado." : "O grupo vota. Se acertar, o caso fecha com bônus. Se errar, você é afastado.") + '</div></div><button class="btn latao pequeno" data-a="pedirPrisao">Pedir prisão</button></div>';
+  }
+
   function abaInvestigar() {
+    if (V.afastado) return blocoPedirPrisao();
     var c = V.caso, n = V.minhasAcoes, tot = V.acoesPorRodada;
     var lupas = "";
     for (var i = 0; i < tot; i++) lupas += '<span class="' + (i < n ? "" : "gasta") + '">🔍</span>';
@@ -834,6 +877,7 @@
     else if (V.souHost) h += '<div class="mudo pequeno" style="margin:-4px 0 8px">💬 Para fazer perguntas livres aos suspeitos, <button class="link" data-a="iaConfig">ative a IA (Gemini)</button>.</div>';
     if (V.perguntando && V.perguntando.length) h += '<div class="cartao pequeno pensando">⏳ Esperando a resposta da sua pergunta…</div>';
     h += listaSuspeitos(true);
+    h += blocoPedirPrisao();
     return h;
   }
 
@@ -1096,6 +1140,16 @@
       });
       return r + "</div>";
     }
+    if (V.prisaoFinal) {
+      var pf = V.prisaoFinal;
+      var hp = '<div class="cartao preso"><div class="carimbo-mini certo">PRESO</div><div style="margin-top:6px"><b>' + esc(nomeSusp(pf.culpado)) + "</b> foi preso a pedido de <b>" + esc(pf.autor) + "</b> na rodada " + pf.rodada + '.</div><div class="pequeno mudo">' + esc(nomeMetodo(pf.metodo)) + " · " + esc(nomeMotivo(pf.motivo)) + "</div></div>";
+      hp += '<div class="mudo pequeno" style="margin-top:10px">Falta só uma coisa: ' + (V.solo ? "qual robô é o Cúmplice?" : "cada um vota em quem é o Cúmplice.") + "</div>";
+      hp += grupo("Quem é o Cúmplice?", "cumplice", V.jogadores.filter(function (j) { return j.id !== V.meuId && (!(V.solo || V.robos) || j.robo); }), function (j) { return (j.robo ? "🤖 " : "") + esc(j.nome); });
+      hp += '<div style="margin-top:18px"><button class="btn prim" data-a="votar"' + (v.cumplice ? "" : " disabled") + ">" + (V.meuVoto ? "Atualizar meu voto" : "⚖️ Confirmar") + "</button></div>";
+      var falta2 = V.jogadores.filter(function (j) { return !j.votou && !j.robo; }).map(function (j) { return j.nome; });
+      if (falta2.length && !V.solo) hp += '<div class="mudo pequeno centro" style="margin-top:10px">Faltam votar: ' + esc(falta2.join(", ")) + "</div>";
+      return hp;
+    }
     var h = V.solo ? '<div class="mudo pequeno">No modo solo, a acusação é só sua. Escolha o culpado, como, por quê e qual robô é o Cúmplice. Ao confirmar, o caso se encerra.</div>'
       : '<div class="mudo pequeno">Cada um vota em segredo. Vale a acusação mais votada: se houver empate, o caso fica sem solução. Combinem antes!</div>';
     if (V.meuVoto) h += '<div class="cartao pequeno" style="margin-top:10px;border-color:var(--verde)">✅ Seu voto foi registrado. Você pode mudar até todos votarem.</div>';
@@ -1124,6 +1178,10 @@
     var h = '<div class="conteudo"><div class="revela"><div class="carimbo ' + D[0] + '">' + D[1] + '</div><div style="font-size:16px;margin-bottom:6px">' + D[2] + "</div>";
     h += '<div class="mudo pequeno">' + (r.acusado ? "O grupo acusou <b>" + esc(nomeSus(r.acusado)) + "</b>." : "Os votos empataram: ninguém foi acusado.") + "</div></div>";
 
+    if (r.prisao) h += '<div class="cartao pequeno" style="margin-top:12px">⚖️ <b>Prisão antecipada</b> pedida por <b>' + esc(r.prisao.autor) + "</b> na rodada " + r.prisao.rodada + (r.prisao.completa ? " · bônus de +" + r.prisao.bonus + " pontos" : " · provas fracas (errou o como ou o porquê)") + "</div>";
+    (r.prisoesErradas || []).forEach(function (pe) {
+      h += '<div class="cartao pequeno" style="margin-top:8px;border-color:var(--vermelho-escuro)">❌ <b>' + esc(pe.autor) + "</b> pediu a prisão errada de " + esc(pe.suspeito) + " (rodada " + pe.rodada + "): afastado e −2 pontos" + (pe.apoiadores.length ? ". Apoiaram: " + esc(pe.apoiadores.join(", ")) + " (−1 cada)" : "") + ".</div>";
+    });
     h += '<h2 class="secao">O que realmente aconteceu</h2>';
     h += '<div class="revela"><div class="mudo pequeno">CULPADO</div><div class="culpado">' + esc(nomeSus(sol.culpado)) + '</div><div class="pequeno" style="margin-top:4px">' + esc(nomeMet(sol.metodo)) + " · " + esc(nomeMot(sol.motivo)) + "</div></div>";
     h += '<div class="papel" style="margin-top:14px"><div class="origem">Relatório final</div><div class="texto">' + esc(sol.explicacao) + "</div></div>";
@@ -1208,7 +1266,8 @@
         "<p><b>Sozinho:</b> no botão <b>Jogar sozinho</b>, você investiga com 3 detetives robôs, sem internet. Um deles é o Cúmplice: desconfie de pista que ninguém confirma e preste atenção quando um robô diz que não viu nada no lugar.</p>" +
         "<p><b>💬 Pergunta livre:</b> se o anfitrião ativou a IA (Gemini), toque num suspeito e escreva qualquer pergunta. Ele responde no personagem e gasta 1 ação. Cuidado: o culpado mente!</p>" +
         "<p><b>🧵 Mural:</b> no Quadro, a aba Mural mostra as pistas, os suspeitos e a vítima como cartões. Todos podem arrastar, ligar com fios vermelhos e marcar o horário de cada coisa, que vai para a Linha do tempo.</p>" +
-        "<p><b>📨 Convite por link:</b> em Convidar amigos, mande o link pelo WhatsApp. Quem tocar nele entra direto na sala (ou baixa o jogo, se ainda não tiver).</p>" +
+        "<p><b>⚖️ Pedir prisão:</b> a partir da rodada 2, quem já souber quem foi pode pedir a prisão (uma vez por partida). O grupo tem 60 segundos e precisa de mais da metade de apoio. Acertou? O caso fecha com bônus. Errou? Quem pediu é afastado e perde 2 pontos, quem apoiou perde 1 e o culpado destrói uma pista.</p>" +
+        "<p><b>📨 Convite por link:</b> em Convidar amigos, mande o link pelo WhatsApp. Quem tocar nele escolhe entrar pelo aplicativo ou jogar pelo navegador (funciona até em iPhone).</p>" +
         "<p><b>Dica:</b> joguem numa chamada de voz ou vídeo no WhatsApp. Discutir é metade da graça!</p></div>" +
         '<button class="btn prim" data-a="fechar">Entendi</button>');
     },
@@ -1376,6 +1435,15 @@
       if (!V.iaPerguntas) { investigar("suspeito", el.dataset.id); return; }
       abrirInterrogatorio(el.dataset.id);
     },
+    pedirPrisao: function () { ui.pp = ui.pp || {}; abrirPedidoPrisao(); },
+    ppOp: function (el) { ui.pp[el.dataset.campo] = el.dataset.id; abrirPedidoPrisao(); },
+    ppConfirmar: function () {
+      var pp = ui.pp || {};
+      enviarAcao({ tipo: "pedirPrisao", culpado: pp.culpado, metodo: pp.metodo, motivo: pp.motivo }, function (r) {
+        if (r && r.ok) { fecharModal(); vibrar(120); som("martelo"); ui.pp = {}; }
+      });
+    },
+    votarPrisao: function (el) { enviarAcao({ tipo: "votarPrisao", apoio: el.dataset.v === "1" }, function (r) { if (r && r.ok) { vibrar(30); fecharModal(); } }); },
     vistaQuadro: function (el) { ui.vistaQuadro = el.dataset.v; ui.ligando = false; ui.fioDe = null; var c = document.getElementById("corpo"); if (c) c._h = null; render(); },
     modoFio: function () { ui.ligando = !ui.ligando; ui.fioDe = null; render(); },
     cartaoMural: function (el) { abrirCartaoMural(el.dataset.id); },
@@ -1502,6 +1570,24 @@
     esquecerSolo: function () { LS.del("ca_solo"); ui.shell = null; render(); }
   };
 
+  function abrirPedidoPrisao() {
+    var c = V.caso, pp = ui.pp || {};
+    function grupo(titulo, campo, lista) {
+      return '<h2 class="secao">' + titulo + '</h2><div class="opcoes">' + lista.map(function (x) {
+        return '<button class="opcao' + (pp[campo] === x.id ? " sel" : "") + '" data-a="ppOp" data-campo="' + campo + '" data-id="' + x.id + '"><span class="marca"></span><span>' + esc(x.nome) + "</span></button>";
+      }).join("") + "</div>";
+    }
+    var completo = pp.culpado && pp.metodo && pp.motivo;
+    var h = '<h2 class="titulo" style="font-size:24px;margin-bottom:4px">⚖️ Pedir prisão</h2>' +
+      '<p class="mudo pequeno" style="margin-top:0">Você só tem <b>um</b> pedido por partida. ' + (V.solo ? "" : "O grupo tem 60 segundos para apoiar: precisa de mais da metade.") + "</p>";
+    h += grupo("Quem você quer prender?", "culpado", c.suspeitos) + grupo("Como foi feito?", "metodo", c.metodos) + grupo("Por quê?", "motivo", c.motivos);
+    h += '<div class="cartao pequeno regras-prisao"><b>✅ Se acertar:</b> o caso fecha na hora e você ganha bônus (mais cedo, mais pontos). Errou o "como" ou o "por quê"? O culpado é preso com provas fracas, sem bônus.<br><b>❌ Se errar o culpado:</b> você é afastado do caso e perde 2 pontos, ' + (V.solo ? "" : "quem apoiou perde 1, ") + "e o culpado destrói uma pista.</div>";
+    h += '<div class="linha-flex" style="margin-top:14px"><button class="btn fantasma" data-a="fechar">Agora não</button><button class="btn prim" data-a="ppConfirmar"' + (completo ? "" : " disabled") + ">⚖️ Pedir prisão</button></div>";
+    var m = document.querySelector("#modal .folha");
+    if (!$modal.hidden && m && m.querySelector("[data-a=ppConfirmar]")) { var st = m.scrollTop; m.innerHTML = '<div class="alca"></div>' + h; m.scrollTop = st; }
+    else abrirModal(h);
+  }
+
   function abrirInterrogatorio(id) {
     var s = V.caso.suspeitos.filter(function (x) { return x.id === id; })[0];
     if (!s) return;
@@ -1619,6 +1705,17 @@
   // a cada 4 s, atualiza a faixa de conexão (para mostrar "esperando o anfitrião" na hora certa)
   setInterval(function () { if (!conectado && V) pinta("faixa", faixa()); }, 4000);
 
+  /* ---------------- Tela acesa no navegador (no app, o Android já cuida disso) ---------------- */
+  var travaTela = null;
+  function manterTelaAcesa() {
+    if (window.Android || !navigator.wakeLock || document.visibilityState !== "visible") return;
+    if (!V) { if (travaTela) { try { travaTela.release(); } catch (e) {} travaTela = null; } return; }
+    if (travaTela) return;
+    navigator.wakeLock.request("screen").then(function (t) { travaTela = t; t.addEventListener("release", function () { travaTela = null; }); }).catch(function () {});
+  }
+  setInterval(manterTelaAcesa, 5000);
+  document.addEventListener("visibilitychange", manterTelaAcesa);
+
   /* ---------------- Convite por link ---------------- */
   // Chamado pelo Android quando alguém toca num link de convite (casoaberto://entrar?c=ABCD)
   window.abrirConvite = function (cod) {
@@ -1700,7 +1797,11 @@
   (function voltarSozinho() {
     var conv = "";
     try { conv = window.Android && Android.convite ? Android.convite() : ""; } catch (e) {}
-    if (!conv) conv = ((/[?&]sala=([A-Za-z]{4})/.exec(location.search) || [])[1] || "");
+    if (!conv) {
+      conv = ((/[?&]sala=([A-Za-z]{4})/.exec(location.search) || [])[1] || "");
+      // tira o código do endereço, para não entrar de novo ao recarregar a página
+      if (conv) try { history.replaceState(null, "", location.pathname + location.search.replace(/([?&])sala=[A-Za-z]{4}&?/, "$1").replace(/[?&]$/, "")); } catch (e) {}
+    }
     if (conv) { ui.shell = null; render(); entrarPorConvite(conv.toUpperCase()); return; }
     var agora = Date.now(), lim = 3 * 3600e3;
     var host = LS.get("ca_host", null), cli = LS.get("ca_cliente", null);
