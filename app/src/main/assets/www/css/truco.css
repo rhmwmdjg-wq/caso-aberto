@@ -190,3 +190,88 @@ input[type=range] { width: 100%; accent-color: var(--vermelho); }
 
 .painel-pedido:not(.responder) { position: absolute; top: 14%; transform: scale(.78); }
 .painel-pedido:not(.responder) .palavra { font-size: 40px; }
+
+/* =========== Fotos dos personagens =========== */
+.avatar-foto { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 50%; }
+.mesa-lobby .lugar .avatar-foto { width: 62px; height: 62px; margin: 0 auto; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
+.mesa-lobby .lugar.d1 .avatar-foto { box-shadow: 0 0 0 3px var(--nos); }
+.mesa-lobby .lugar.d2 .avatar-foto { box-shadow: 0 0 0 3px var(--eles); }
+.retrato-foto { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; }
+.pers.foto { padding: 0 0 10px; overflow: hidden; }
+.pers.foto .retrato-foto { height: 168px; border-radius: 12px 12px 0 0; }
+.pers.foto .n { margin-top: 6px; padding: 0 6px; }
+.pers.foto .d { padding: 0 8px; }
+.pers.foto .ouvir { background: rgba(0,0,0,.55); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+
+/* =========== Cenário: Rancho do Truco =========== */
+.cen-rancho { position: absolute; inset: 0; background: #2a170b; overflow: hidden; }
+.cen-rancho .foto { position: absolute; left: 0; right: 0; top: 0; height: 46%; background-size: cover; background-position: 32% 40%; }
+.cen-rancho .foto::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.05) 55%, #4f2f19 100%); }
+.cen-rancho .chao { position: absolute; left: 0; right: 0; top: 46%; bottom: 0; width: 100%; height: 54%; }
+.cen-rancho .luz { position: absolute; left: 2%; top: 4%; width: 46%; height: 34%; background: radial-gradient(circle at 45% 45%, rgba(255,190,90,.35), transparent 62%); mix-blend-mode: screen; animation: chama 2.8s ease-in-out infinite; pointer-events: none; }
+@keyframes chama { 0%, 100% { opacity: .85; } 30% { opacity: 1; } 55% { opacity: .7; } 75% { opacity: .95; } }
+
+/* =========== Mesa em 3D =========== */
+.mesa-area { perspective: 1000px; perspective-origin: 50% 0%; }
+.mesa-madeira, .jogadas { transform: rotateX(20deg); transform-origin: 50% 60%; }
+.mesa-madeira { background:
+    repeating-linear-gradient(92deg, rgba(0,0,0,.06) 0 2px, transparent 2px 9px, rgba(255,255,255,.03) 9px 10px, transparent 10px 26px),
+    radial-gradient(ellipse at 40% 25%, #b07445, #6e4224 60%, #4d2c15); }
+.jogadas { transform-style: preserve-3d; }
+.jogadas.velha { opacity: 1; }
+.jogada { transform-style: preserve-3d; }
+.jogada .c3d { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.jogada .fr, .jogada .vs { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.jogada .vs { transform: rotateY(180deg); }
+.jogada .carta-svg { width: 100%; height: 100%; }
+.jogada.chegando .c3d { animation: vira3d .6s cubic-bezier(.2,.8,.3,1); }
+@keyframes vira3d { 0% { transform: rotateY(180deg) translateZ(60px) scale(1.2); } 60% { transform: rotateY(-12deg) translateZ(20px); } 100% { transform: none; } }
+.jogada.vencedora { z-index: 3; }
+.jogada.vencedora .c3d { animation: vence .6s ease-out .15s both; }
+.jogada.vencedora .fr { border-radius: 7px; box-shadow: 0 0 0 3px #f2c230, 0 0 24px 6px rgba(242,194,48,.75); }
+@keyframes vence { from { transform: none; } to { transform: translateZ(26px) scale(1.08); } }
+/* cartas da rodada indo para o lado de quem ganhou */
+.jogadas.recolhe { animation: .65s ease-in 1.6s forwards; }
+.jogadas.recolhe.r0 { animation-name: rec0; } .jogadas.recolhe.r1 { animation-name: rec1; }
+.jogadas.recolhe.r2 { animation-name: rec2; } .jogadas.recolhe.r3 { animation-name: rec3; }
+@keyframes rec0 { to { transform: rotateX(20deg) translateY(170px) scale(.5); opacity: 0; } }
+@keyframes rec1 { to { transform: rotateX(20deg) translateX(170px) scale(.5); opacity: 0; } }
+@keyframes rec2 { to { transform: rotateX(20deg) translateY(-170px) scale(.5); opacity: 0; } }
+@keyframes rec3 { to { transform: rotateX(20deg) translateX(-170px) scale(.5); opacity: 0; } }
+.jogadas.empatou { animation: some .5s ease-in 1.8s forwards; }
+@keyframes some { to { opacity: 0; } }
+
+/* cartas voando na distribuição */
+.distribuicao { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.distribuicao .voa { position: absolute; left: 50%; top: 45%; width: 36px; height: 54px; margin: -27px 0 0 -18px; opacity: 0; animation: voa .42s cubic-bezier(.3,.7,.4,1) both; animation-delay: calc(var(--k) * .12s + .75s); filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); }
+.distribuicao .voa .carta-svg { width: 100%; height: 100%; }
+.distribuicao.de0 { --sx: 0px; --sy: 150px; } .distribuicao.de1 { --sx: 140px; --sy: -10px; }
+.distribuicao.de2 { --sx: 0px; --sy: -150px; } .distribuicao.de3 { --sx: -140px; --sy: -10px; }
+.voa.para0 { --ex: 0px; --ey: 230px; } .voa.para1 { --ex: 160px; --ey: -20px; }
+.voa.para2 { --ex: 0px; --ey: -190px; } .voa.para3 { --ex: -160px; --ey: -20px; }
+@keyframes voa {
+  0% { opacity: 1; transform: translate(var(--sx), var(--sy)) rotate(0deg) scale(1.1); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--ex), var(--ey)) rotate(540deg) scale(.7); }
+}
+
+/* mão em 3D, com brilho nas manilhas */
+.minhas-cartas { perspective: 800px; }
+.minha-carta { position: relative; transform-style: preserve-3d; }
+.minha-carta:nth-child(1) { transform: rotateX(10deg) rotateZ(-7deg) translateY(8px); }
+.minha-carta:nth-child(2) { transform: rotateX(10deg); }
+.minha-carta:nth-child(3) { transform: rotateX(10deg) rotateZ(7deg) translateY(8px); }
+.minhas-cartas.ativa .minha-carta:hover, .minhas-cartas.ativa .minha-carta:active { transform: rotateX(0) translateY(-20px) translateZ(40px) scale(1.06); filter: drop-shadow(0 18px 18px rgba(0,0,0,.6)); }
+.minha-carta.manilha::after { content: ""; position: absolute; inset: 2px; border-radius: 7px; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,236,170,.65) 46%, transparent 62%); background-size: 260% 100%; animation: brilhoM 2.4s ease-in-out infinite; mix-blend-mode: screen; }
+@keyframes brilhoM { 0% { background-position: 130% 0; } 60%, 100% { background-position: -40% 0; } }
+
+/* grito de truco: retrato grande com carimbo */
+.painel-pedido { overflow: visible; }
+.pedido-retrato { position: relative; width: 150px; height: 186px; margin: -70px auto 8px; border-radius: 16px; overflow: hidden; border: 3px solid #f2c230; box-shadow: 0 18px 36px rgba(0,0,0,.7); background: #2a170b; animation: pop3d .55s cubic-bezier(.2,.9,.3,1.2) both; }
+.pedido-retrato .avatar-svg { width: 100%; height: 100%; border-radius: 0; }
+@keyframes pop3d { 0% { transform: perspective(600px) rotateY(-80deg) scale(.4); opacity: 0; } 100% { transform: perspective(600px) rotateY(0) scale(1); opacity: 1; } }
+.carimbo-pedido { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%) rotate(-9deg); border: 3px solid #fff; border-radius: 8px; background: rgba(198,40,40,.92); color: #fff; font-family: "Playfair", Georgia, serif; font-weight: 900; font-size: 26px; letter-spacing: 1px; padding: 0 10px; white-space: nowrap; animation: carimba .35s ease-out .35s both; }
+@keyframes carimba { from { transform: translateX(-50%) rotate(-9deg) scale(2.4); opacity: 0; } }
+.painel-pedido .quem { font-size: 14px; }
+.painel-pedido:not(.responder) { top: 22%; }
