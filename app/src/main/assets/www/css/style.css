@@ -543,3 +543,16 @@ textarea.entrada { min-height: 90px; resize: vertical; }
 .prisao-pendente .linha-flex .btn { flex: 1; }
 .regras-prisao { margin-top: 14px; line-height: 1.5; }
 .cartao.preso { border-color: var(--verde); }
+
+/* ---------- Tela inicial: escolher o jogo ---------- */
+.hub { padding-top: calc(30px + var(--seguro-topo)); }
+.hub-cab { text-align: center; margin: 10px 0 24px; }
+.hub-cab .titulo { font-size: 34px; margin: 0; }
+.hub-jogo { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; border: 1px solid var(--linha); border-radius: 20px; padding: 22px 18px; margin-bottom: 14px; color: var(--texto); cursor: pointer; box-shadow: 0 12px 26px rgba(0,0,0,.4); }
+.hub-jogo .emoji { font-size: 46px; }
+.hub-jogo .txt { display: flex; flex-direction: column; gap: 4px; }
+.hub-jogo b { font-family: "Playfair", Georgia, serif; font-size: 22px; }
+.hub-jogo .txt span { font-size: 14px; color: var(--mudo); }
+.hub-jogo.caso { background: linear-gradient(135deg, #20242d, #2e2219); }
+.hub-jogo.truco { background: linear-gradient(135deg, #5a2a15, #2a1a0e); border-color: #8a5a2a; }
+.voltar-hub { color: var(--latao); margin-bottom: 4px; }
