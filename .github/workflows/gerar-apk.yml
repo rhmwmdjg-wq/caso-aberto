@@ -46,3 +46,39 @@ jobs:
           body: Baixe o arquivo CasoAberto.apk abaixo e instale no celular.
           files: CasoAberto.apk
           make_latest: true
+
+  # Publica o site (página do convite + versão do jogo para navegador) no GitHub Pages
+  site:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.publicar.outputs.page_url }}
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Montar o site
+        run: |
+          mkdir -p _site
+          cp -r docs/. _site/
+          cp -r app/src/main/assets/www _site/jogo
+          touch _site/.nojekyll
+
+      - name: Configurar o Pages
+        uses: actions/configure-pages@v5
+
+      - name: Enviar o site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Publicar o site
+        id: publicar
+        uses: actions/deploy-pages@v4
