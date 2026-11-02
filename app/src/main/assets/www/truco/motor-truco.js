@@ -16,6 +16,10 @@
   var PALAVRA = { TRUCO: "truco", SEIS: "seis", NOVE: "nove", DOZE: "doze" };
 
   var PERSONAGENS = [
+    { id: "barba", nome: "Barbudo", desc: "Cara fechada, carta boa. Nunca ri antes de ver o zap.", foto: true },
+    { id: "chapeu", nome: "Juninho do Chapéu", desc: "Óculos escuros para ninguém ler o blefe dele.", foto: true },
+    { id: "mestre", nome: "Mestre Valdo", desc: "Joga truco nesse balcão há mais de 40 anos. Não nasceu ontem.", foto: true },
+    { id: "morena", nome: "Morena do Ás", desc: "Sorriso de quem tem a espadilha guardada na mão.", foto: true },
     { id: "tiao", nome: "Seu Tião", desc: "Fazendeiro das antigas. Não corre de truco nem de chuva." },
     { id: "ze", nome: "Zé do Pequi", desc: "Vende pequi na beira da estrada e grita mais que todo mundo." },
     { id: "lurdinha", nome: "Dona Lurdinha", desc: "Dona do boteco. Conhece o blefe de cada freguês." },
@@ -42,7 +46,7 @@
     this.s = opts.estado || {
       codigo: opts.codigo || "", fase: "lobby", hostId: null,
       jogadores: {}, assentos: [null, null, null, null],
-      config: { regra: "mineiro", cenario: "boteco", tento: "milho" },
+      config: { regra: "mineiro", cenario: "rancho", tento: "milho" },
       placar: [0, 0], partidas: [0, 0], mao: null, chat: [], eventos: [], seq: 1, distribuidor: 3
     };
   }

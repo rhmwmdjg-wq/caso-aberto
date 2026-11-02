@@ -17,7 +17,13 @@
     juca:     { pele: "#d29a6e", cabelo: "#3b2414", camisa: "#e8c547", chapeu: "palha-fita", bigode: true, sorriso: true },
     rosinha:  { pele: "#9c6440", cabelo: "#140c08", camisa: "#e84f8a", chapeu: "flor", brinco: true, batom: true, cacheado: true }
   };
+  var FOTOS = { barba: 1, chapeu: 1, mestre: 1, morena: 1 };
+  function temFoto(id) { return !!FOTOS[id]; }
+  function retrato(id) { // corpo inteiro (seleção de personagem e grito de truco)
+    return FOTOS[id] ? '<img class="retrato-foto" src="truco/img/' + id + '-corpo.jpg" alt="" draggable="false">' : avatar(id, "grande");
+  }
   function avatar(id, extra) {
+    if (FOTOS[id]) return '<img class="avatar-foto ' + (extra || "") + '" src="truco/img/' + id + '-rosto.jpg" alt="" draggable="false">';
     var L = LOOK[id] || { pele: "#c98e62", cabelo: "#333", camisa: "#777", chapeu: "" };
     var s = '<svg viewBox="0 0 100 100" class="avatar-svg ' + (extra || "") + '" aria-hidden="true">';
     s += '<circle cx="50" cy="50" r="49" fill="#f3e2c0"/>';
@@ -81,18 +87,29 @@
   var SIMBOLO = { P: "♣", C: "♥", E: "♠", O: "♦" };
   var COR = { P: "#1b1b1b", E: "#1b1b1b", C: "#c62828", O: "#c62828" };
   var NOME_RANK = { Q: "Q", J: "J", K: "K", A: "A" };
-  function figura(r, n) {
+  function figura(r, n) { // rei, dama e valete no estilo do baralho tradicional (desenho próprio)
     var c = COR[n], sim = SIMBOLO[n];
-    var coroa = r === "K" ? '<path d="M-14 -30 L-10 -40 L-4 -32 L0 -42 L4 -32 L10 -40 L14 -30 Z" fill="#e0b13a" stroke="#8a6a1a" stroke-width="1"/>'
-      : r === "Q" ? '<path d="M-12 -30 Q0 -44 12 -30 Z" fill="#e0b13a" stroke="#8a6a1a" stroke-width="1"/><circle cx="0" cy="-38" r="2.5" fill="' + c + '"/>'
-      : '<path d="M-13 -30 Q0 -40 13 -30 L10 -26 L-10 -26 Z" fill="' + c + '"/><circle cx="8" cy="-35" r="3" fill="#e0b13a"/>';
-    return '<g transform="translate(40 60)">' +
-      '<rect x="-24" y="-46" width="48" height="92" rx="4" fill="none" stroke="' + c + '" stroke-width="1.2" opacity=".55"/>' +
-      '<g>' + coroa + '<circle cx="0" cy="-20" r="10" fill="#f1d2b0" stroke="#7a5230" stroke-width="1"/>' +
-      '<circle cx="-3.5" cy="-21" r="1.2" fill="#222"/><circle cx="3.5" cy="-21" r="1.2" fill="#222"/>' +
-      '<path d="M-14 -8 L14 -8 L18 22 L-18 22 Z" fill="' + c + '" opacity=".9"/><path d="M-14 -8 L0 6 L14 -8" fill="none" stroke="#e0b13a" stroke-width="2"/>' +
-      '<text x="0" y="16" text-anchor="middle" font-size="13" fill="#fff">' + sim + "</text></g>" +
-      '<g transform="rotate(180)" opacity=".85">' + coroa + '<circle cx="0" cy="-20" r="10" fill="#f1d2b0" stroke="#7a5230" stroke-width="1"/><path d="M-14 -8 L14 -8 L18 22 L-18 22 Z" fill="' + c + '" opacity=".9"/></g></g>';
+    var manto = n === "C" || n === "O" ? ["#c62828", "#1e4e9c"] : ["#1e4e9c", "#c62828"];
+    var ouro = "#f2c230", pele = "#f5d7b5", linha = "#1b1b1b";
+    var coroa = r === "K" ? '<path d="M-9 -33 L-9 -42 L-5 -37 L0 -44 L5 -37 L9 -42 L9 -33 Z" fill="' + ouro + '" stroke="' + linha + '" stroke-width=".7"/><circle cx="0" cy="-39" r="1.3" fill="' + manto[0] + '"/>'
+      : r === "Q" ? '<path d="M-8 -33 Q-9 -41 -4 -40 Q0 -46 4 -40 Q9 -41 8 -33 Z" fill="' + ouro + '" stroke="' + linha + '" stroke-width=".7"/><circle cx="0" cy="-41" r="1.4" fill="' + manto[1] + '"/>'
+      : '<path d="M-9 -32 Q-8 -41 0 -41 Q8 -41 9 -32 Z" fill="' + manto[1] + '" stroke="' + linha + '" stroke-width=".7"/><path d="M-9 -33 L9 -33" stroke="' + ouro + '" stroke-width="2"/><path d="M6 -40 Q12 -46 14 -38" stroke="' + manto[0] + '" stroke-width="2" fill="none"/>';
+    var cabelo = r === "Q" ? '<path d="M-8 -32 Q-11 -20 -8 -14 L-5 -18 L-5 -30 Z M8 -32 Q11 -20 8 -14 L5 -18 L5 -30 Z" fill="#7a4a1d" stroke="' + linha + '" stroke-width=".5"/>' : "";
+    var barba = r === "K" ? '<path d="M-6 -21 Q0 -12 6 -21 Q4 -16 0 -15 Q-4 -16 -6 -21 Z" fill="#7a4a1d" stroke="' + linha + '" stroke-width=".5"/>' : "";
+    var objeto = r === "K" ? '<path d="M11 -26 L11 2" stroke="' + linha + '" stroke-width="1.6"/><path d="M8 -26 L14 -26" stroke="' + ouro + '" stroke-width="2"/>'
+      : r === "Q" ? '<path d="M-12 -6 L-12 -16" stroke="#2e7d32" stroke-width="1.2"/><circle cx="-12" cy="-18" r="3" fill="' + manto[0] + '" stroke="' + linha + '" stroke-width=".5"/>'
+      : '<path d="M-13 2 L-13 -24" stroke="' + linha + '" stroke-width="1.2"/><path d="M-15 -24 L-13 -30 L-11 -24 Z" fill="#999" stroke="' + linha + '" stroke-width=".5"/>';
+    var meio = '<g>' + coroa + cabelo + '<ellipse cx="0" cy="-25" rx="6.5" ry="8" fill="' + pele + '" stroke="' + linha + '" stroke-width=".7"/>' +
+      '<circle cx="-2.3" cy="-26" r=".9" fill="' + linha + '"/><circle cx="2.3" cy="-26" r=".9" fill="' + linha + '"/><path d="M-1.6 -21.5 Q0 -20.6 1.6 -21.5" stroke="#a33" stroke-width=".7" fill="none"/>' + barba +
+      '<path d="M-14 -14 Q0 -20 14 -14 L16 2 L-16 2 Z" fill="' + manto[0] + '" stroke="' + linha + '" stroke-width=".7"/>' +
+      '<path d="M-7 -16 L0 -6 L7 -16" fill="' + ouro + '" stroke="' + linha + '" stroke-width=".6"/>' +
+      '<path d="M-14 -10 L-8 2 M14 -10 L8 2" stroke="' + manto[1] + '" stroke-width="3"/>' +
+      [-10, -4, 4, 10].map(function (x) { return '<circle cx="' + x + '" cy="-3" r="1" fill="' + ouro + '"/>'; }).join("") +
+      objeto + '<text x="-9" y="-1" font-size="7" fill="' + c + '" text-anchor="middle">' + sim + "</text></g>";
+    return '<g transform="translate(40 60)"><rect x="-21" y="-46" width="42" height="92" fill="#fffdf6" stroke="' + c + '" stroke-width=".8"/>' +
+      '<clipPath id="cl' + r + n + '"><rect x="-21" y="-46" width="42" height="46"/></clipPath><g clip-path="url(#cl' + r + n + ')">' + meio + "</g>" +
+      '<g transform="rotate(180)"><g clip-path="url(#cl' + r + n + ')">' + meio + "</g></g>" +
+      '<path d="M-21 0 L21 0" stroke="' + linha + '" stroke-width=".5" opacity=".5"/></g>';
   }
   var PIPS = { // posições dos naipes no meio da carta (80x120)
     1: [[40, 60]], 2: [[40, 30], [40, 90]], 3: [[40, 26], [40, 60], [40, 94]], 4: [[26, 32], [54, 32], [26, 88], [54, 88]],
@@ -119,10 +136,12 @@
   function verso(opts) {
     opts = opts || {};
     var s = '<svg viewBox="0 0 80 120" class="carta-svg verso' + (opts.cls ? " " + opts.cls : "") + '">';
-    s += '<defs><pattern id="tr-trama" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#a3201b"/><path d="M0 0 L0 8 M4 0 L4 8" stroke="#c63a2f" stroke-width="1.6"/></pattern></defs>';
-    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#fdfbf5" stroke="#cfc6b0"/><rect x="5" y="5" width="70" height="110" rx="5" fill="url(#tr-trama)"/>';
-    s += '<ellipse cx="40" cy="60" rx="17" ry="24" fill="#fdfbf5"/><ellipse cx="40" cy="60" rx="13" ry="20" fill="#a3201b"/>';
-    s += '<text x="40" y="66" text-anchor="middle" font-size="16" fill="#fdfbf5" font-family="Georgia,serif" font-weight="700">T</text>';
+    s += '<defs><pattern id="tr-trama2" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#c8161d"/><path d="M0 3 L3 0 L6 3 L3 6 Z" fill="none" stroke="#e8545a" stroke-width=".6"/></pattern></defs>';
+    s += '<rect x="1" y="1" width="78" height="118" rx="7" fill="#fdfbf5" stroke="#d8d0bd"/><rect x="5" y="5" width="70" height="110" rx="4" fill="url(#tr-trama2)"/>';
+    s += '<rect x="8" y="8" width="64" height="104" rx="3" fill="none" stroke="#fff" stroke-width=".9" opacity=".85"/>';
+    s += '<circle cx="40" cy="58" r="15" fill="#fdfbf5"/><circle cx="40" cy="58" r="12.5" fill="none" stroke="#c8161d" stroke-width=".8"/>';
+    s += '<text x="40" y="66" text-anchor="middle" font-size="22" fill="#c8161d">♠</text>';
+    s += '<text x="40" y="88" text-anchor="middle" font-size="7.5" fill="#fff" font-family="Georgia,serif" font-weight="700" letter-spacing="2">TRUCO</text>';
     return s + "</svg>";
   }
 
@@ -154,22 +173,41 @@
       '<path d="M-10 -10 L-8 26 L8 26 L10 -10 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1"/>' +
       [-6, -2, 2, 6].map(function (xx) { return '<path d="M' + xx + ' -4 L' + (xx * 0.8) + ' 26" stroke="rgba(255,255,255,.25)" stroke-width="1"/>'; }).join("") + "</g>";
   }
+  function tigela(x, y, tipo) {
+    var s = '<g transform="translate(' + x + " " + y + ')"><ellipse cx="0" cy="10" rx="30" ry="9" fill="rgba(0,0,0,.35)"/>' +
+      '<path d="M-28 -2 Q-26 18 0 20 Q26 18 28 -2 Z" fill="#6b3d1e" stroke="#3e2210" stroke-width="1.5"/><ellipse cx="0" cy="-2" rx="28" ry="9" fill="#4a2a14"/>';
+    for (var i = 0; i < 22; i++) {
+      var a = i * 2.4, r = (i % 7) * 3.4, gx = Math.cos(a) * r * 1.2, gy = -3 + Math.sin(a) * r * 0.35;
+      s += tipo === "milho" ? '<ellipse cx="' + gx.toFixed(1) + '" cy="' + gy.toFixed(1) + '" rx="3.2" ry="3.8" fill="#f2b51d" stroke="#b9820c" stroke-width=".6"/>'
+        : '<ellipse cx="' + gx.toFixed(1) + '" cy="' + gy.toFixed(1) + '" rx="4.4" ry="2.8" fill="#f6f1e4" stroke="#c9bb98" stroke-width=".6" transform="rotate(' + (i * 37 % 180) + " " + gx.toFixed(1) + " " + gy.toFixed(1) + ')"/>';
+    }
+    return s + "</g>";
+  }
   function decoracaoMesa(semente) {
     var s = '<svg class="mesa-deco" viewBox="0 0 400 400" preserveAspectRatio="none">';
     s += garrafa(42, 40, 0.9, -4) + garrafa(70, 30, 0.82, 3) + copo(100, 58, 0.9);
     s += garrafa(352, 300, 0.95, 5) + copo(318, 330, 0.95);
-    s += '<g transform="translate(330 60)"><ellipse rx="22" ry="14" fill="#e9e4d4" stroke="#bdb59b"/><text y="5" text-anchor="middle" font-size="14">🥜</text></g>';
+    s += tigela(330, 62, "milho") + tigela(64, 330, "feijao");
     return s + "</svg>";
   }
 
   /* ---------------- Cenários do norte de Minas ---------------- */
   var CENARIOS = {
+    rancho: { nome: "Rancho do Truco", icone: "🤠", desc: "Placa de TRUCO, chapéu de palha, lampião e o pôr do sol no cerrado." },
     boteco: { nome: "Boteco do Seu Tião", icone: "🍺", desc: "Azulejo, balcão e a geladeira da cerveja trincando." },
     varanda: { nome: "Varanda da fazenda", icone: "🌅", desc: "Pôr do sol no cerrado, pequizeiro e o gado no pasto." },
     rio: { nome: "Beira do Velho Chico", icone: "🛶", desc: "Noite de lua no Rio São Francisco, com a canoa amarrada." },
     festa: { nome: "Festa de agosto", icone: "🎉", desc: "Bandeirinhas, fogueira e forró na praça da cidade." }
   };
   function fundo(id) {
+    if (id === "rancho" || !CENARIOS[id]) {
+      return '<div class="cen-rancho"><div class="foto" style="background-image:url(truco/img/rancho.jpg)"></div><div class="luz"></div>' +
+        '<svg class="chao" viewBox="0 0 400 500" preserveAspectRatio="none"><defs><linearGradient id="ch-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4024"/><stop offset="1" stop-color="#2a170b"/></linearGradient></defs><rect width="400" height="500" fill="url(#ch-r)"/>' +
+        Array.apply(null, Array(16)).map(function (_, i) { return '<path d="M0 ' + (i * 32 + 10) + " L400 " + (i * 32 + 14) + '" stroke="#3c2312" stroke-width="2.5" opacity=".7"/>'; }).join("") +
+        '<g transform="translate(266 46) rotate(-3)"><rect x="-4" y="-30" width="4" height="34" fill="#4a2c17"/><rect x="96" y="-30" width="4" height="34" fill="#4a2c17"/><rect x="-14" y="0" width="128" height="58" rx="4" fill="#9a6a3c" stroke="#5a3a1c" stroke-width="2"/>' +
+        '<text x="50" y="18" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif" font-weight="700">Aqui tem:</text><text x="50" y="33" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif">Truco, cerveja</text><text x="50" y="48" text-anchor="middle" font-size="10.5" fill="#2a1a0c" font-family="Georgia,serif">e resenha boa!</text></g>' +
+        "</svg></div>";
+    }
     var s = '<svg class="cenario-svg" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">';
     if (id === "varanda") {
       s += '<defs><linearGradient id="ceu-v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2a5c"/><stop offset=".45" stop-color="#e2774a"/><stop offset=".7" stop-color="#f6c66b"/></linearGradient></defs>';
@@ -212,5 +250,5 @@
     return s + "</svg>";
   }
 
-  global.ArteTruco = { avatar: avatar, carta: carta, verso: verso, tentos: tentos, grao: grao, decoracaoMesa: decoracaoMesa, fundo: fundo, CENARIOS: CENARIOS, SIMBOLO: SIMBOLO };
+  global.ArteTruco = { avatar: avatar, retrato: retrato, temFoto: temFoto, carta: carta, verso: verso, tentos: tentos, grao: grao, decoracaoMesa: decoracaoMesa, fundo: fundo, CENARIOS: CENARIOS, SIMBOLO: SIMBOLO };
 })(window);

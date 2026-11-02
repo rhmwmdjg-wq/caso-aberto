@@ -331,11 +331,13 @@
       case "grito":
         S.fx("murro");
         if (as) S.voz(as.personagem, e.palavra, as.id);
+        // o Mestre Valdo ainda provoca depois de pedir truco
+        if (as && as.personagem === "mestre" && e.palavra === "truco" && !(S.vozesCustom[as.id] && S.vozesCustom[as.id].truco)) setTimeout(function () { S.voz("mestre", "provoca"); }, 750);
         ui.bolhas[e.lugar] = { texto: e.texto, t: Date.now(), grito: true };
         if (["truco", "seis", "nove", "doze"].indexOf(e.palavra) >= 0) { ui.tremer = Date.now(); vibrar(180); }
         setTimeout(render, 2700);
         break;
-      case "vaza": break;
+      case "vaza": ui.animVaza = { lugar: e.lugar, time: e.time, t: Date.now() }; if (e.time >= 0) setTimeout(function () { S.fx("carta"); }, 1300); break;
       case "fimMao": {
         var nos = v.meuLugar >= 0 ? v.meuLugar % 2 : 0;
         S.fx("tento", e.pontos);
@@ -395,7 +397,7 @@
     if (host && host.estado && agora - host.ts < lim) ret = '<div class="retomar">Você tinha uma mesa aberta (<b>' + esc(host.codigo) + '</b>).<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarHost">Reabrir</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
     else if (solo && solo.estado && agora - solo.ts < lim && solo.estado.fase === "jogo") ret = '<div class="retomar">Continuar a partida com os robôs?<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarSolo">Continuar</button><button class="btn fantasma pequeno" data-a="esquecerSolo">Descartar</button></div></div>';
     else if (cli && agora - cli.ts < lim) ret = '<div class="retomar">Voltar para a mesa <b>' + esc(cli.codigo) + '</b>?<div class="linha-flex"><button class="btn latao pequeno" data-a="retomarCliente">Voltar</button><button class="btn fantasma pequeno" data-a="esquecer">Descartar</button></div></div>';
-    var novo = shell("inicio", '<div class="tela inicio-truco">' + '<div class="cenario">' + A.fundo("boteco") + '</div><div class="rolagem"><div class="conteudo">' +
+    var novo = shell("inicio", '<div class="tela inicio-truco">' + '<div class="cenario">' + A.fundo("rancho") + '</div><div class="rolagem"><div class="conteudo">' +
       '<button class="link voltar-jogos" data-a="jogos">← Jogos</button>' +
       '<div class="logo-truco"><div class="cartas-logo">' + A.carta("4P") + A.carta("7C") + A.carta("AE") + '</div><h1>TRUCO</h1><div class="sub">do Norte de Minas</div></div>' +
       '<div id="retomar"></div>' +
@@ -455,7 +457,7 @@
     Truco.PERSONAGENS.forEach(function (p) {
       var dono = V.jogadores.filter(function (j) { return j.personagem === p.id; })[0];
       var meuP = meu === p.id, ocupado = dono && !meuP;
-      h += '<button class="pers' + (meuP ? " sel" : "") + (ocupado ? " ocupado" : "") + '" data-a="personagem" data-id="' + p.id + '"' + (ocupado ? " disabled" : "") + ">" + A.avatar(p.id) +
+      h += '<button class="pers' + (A.temFoto(p.id) ? " foto" : "") + (meuP ? " sel" : "") + (ocupado ? " ocupado" : "") + '" data-a="personagem" data-id="' + p.id + '"' + (ocupado ? " disabled" : "") + ">" + (A.temFoto(p.id) ? A.retrato(p.id) : A.avatar(p.id)) +
         '<div class="n">' + esc(p.nome) + '</div><div class="d">' + (ocupado ? "com " + esc(dono.nome) : esc(p.desc)) + "</div>" +
         '<span class="ouvir" data-a="ouvirPers" data-id="' + p.id + '">🔊</span></button>';
     });
@@ -519,13 +521,22 @@
     h += info + "</div>";
     // cartas na mesa
     var mostrar = m.mesa.length ? m.mesa : (m.ultimaVaza || []);
-    var velha = !m.mesa.length;
-    h += '<div class="jogadas' + (velha ? " velha" : "") + '">';
+    var velha = !m.mesa.length, ultV = m.vazas[m.vazas.length - 1];
+    var venceu = velha && ultV && ultV.time !== -1 ? ultV.lugar : -1;
+    h += '<div class="jogadas' + (velha ? " velha" + (venceu >= 0 ? " recolhe r" + rel(venceu) : " empatou") : "") + '">';
     mostrar.forEach(function (j) {
-      var r = rel(j.lugar), nova = ui.animJogada && ui.animJogada.lugar === j.lugar && Date.now() - ui.animJogada.t < 700 && !velha;
-      h += '<div class="jogada r' + r + (nova ? " chegando" : "") + '">' + (j.coberta ? A.verso() : A.carta(j.carta)) + "</div>";
+      var r = rel(j.lugar), nova = ui.animJogada && ui.animJogada.lugar === j.lugar && Date.now() - ui.animJogada.t < 700;
+      h += '<div class="jogada r' + r + (nova ? " chegando" : "") + (j.lugar === venceu ? " vencedora" : "") + '"><div class="c3d"><div class="fr">' + (j.coberta ? A.verso() : A.carta(j.carta)) + '</div><div class="vs">' + A.verso() + "</div></div></div>";
     });
     h += "</div>";
+    // cartas voando do baralho para cada jogador na hora de distribuir
+    if (ui.animDistribuir && Date.now() - ui.animDistribuir < 2300 && !m.mesa.length && !m.vazas.length) {
+      var d0 = rel(m.distribuidor);
+      h += '<div class="distribuicao de' + d0 + '">';
+      for (var k = 0; k < 12; k++) h += '<div class="voa para' + rel((m.distribuidor + 1 + k) % 4) + '" style="--k:' + k + '">' + A.verso() + "</div>";
+      h += "</div>";
+      setTimeout(render, 2400);
+    }
     pinta("area", h);
     // minha mão
     var mm = "";
@@ -536,13 +547,13 @@
       mm += '<div class="minhas-cartas' + (minhaVez ? " ativa" : "") + '">';
       minha.forEach(function (c, i) {
         var man = m.forcas && m.forcas[i] >= 10;
-        mm += '<button class="minha-carta' + (distribuindo ? " dist" : "") + '" style="--i:' + i + '" data-a="jogar" data-c="' + c + '"' + (minhaVez ? "" : " disabled") + ">" + A.carta(c, { manilha: man }) + "</button>";
+        mm += '<button class="minha-carta' + (distribuindo ? " dist" : "") + (man ? " manilha" : "") + '" style="--i:' + i + '" data-a="jogar" data-c="' + c + '"' + (minhaVez ? "" : " disabled") + ">" + A.carta(c, { manilha: man }) + "</button>";
       });
       mm += "</div>";
       mm += '<div class="acoes-mao">';
       if (m.podeTruco) mm += '<button class="btn-truco" data-a="truco">' + esc(m.nomeProximo || "TRUCO") + "!</button>";
       if (minhaVez && m.vazas.length > 0) mm += '<button class="btn-coberta' + (ui.coberta ? " on" : "") + '" data-a="coberta">' + (ui.coberta ? "🂠 Coberta: sim" : "🂠 Jogar coberta") + "</button>";
-      mm += '<div class="aviso-vez">' + (m.fim ? "" : m.pedido ? "" : minhaVez ? "Sua vez: toque numa carta" : (V.assentos[m.vez] ? "Vez de " + esc(V.assentos[m.vez].nome.split(" ")[0]) : "")) + "</div>";
+      mm += '<div class="aviso-vez">' + (m.fim ? "" : m.pedido ? "" : minhaVez ? "Sua vez: toque numa carta" : (V.assentos[m.vez] ? "Vez de " + esc(V.assentos[m.vez].nome.replace(/^Robô /, "🤖 ").split(" ").slice(0, 2).join(" ")) : "")) + "</div>";
       mm += "</div>";
     }
     pinta("minha", mm);
@@ -550,7 +561,7 @@
     var sob = "";
     if (m.pedido && !m.fim) {
       var de = V.assentos[m.pedido.deLugar];
-      sob += '<div class="painel-pedido' + (m.possoResponder ? " responder" : "") + '"><div class="quem">' + A.avatar(de.personagem) + "<div><b>" + esc(de.nome) + '</b> pediu</div></div><div class="palavra">' + esc(m.pedido.nome) + "!</div>";
+      sob += '<div class="painel-pedido' + (m.possoResponder ? " responder" : "") + '"><div class="pedido-retrato">' + A.retrato(de.personagem) + '<div class="carimbo-pedido">' + esc(m.pedido.nome) + '!</div></div><div class="quem"><b>' + esc(de.nome) + "</b> (" + esc((PERS[de.personagem] || {}).nome || "") + ') pediu</div><div class="palavra">' + esc(m.pedido.nome) + "!</div>";
       if (m.possoResponder) {
         sob += '<div class="botoes"><button class="btn prim" data-a="responder" data-r="aceito">Desce! (vale ' + m.pedido.valor + ")</button><button class=\"btn fantasma\" data-a=\"responder\" data-r=\"corro\">Corro</button>" +
           (m.pedido.nomeAumento ? '<button class="btn-truco" data-a="responder" data-r="aumento">' + esc(m.pedido.nomeAumento) + "!</button>" : "") + "</div>";
@@ -647,8 +658,8 @@
     sentar: function (el) { enviarAcao({ tipo: "sentar", lugar: +el.dataset.l }); },
     tirarRobo: function (el) { enviarAcao({ tipo: "tirarRobo", lugar: +el.dataset.l }); },
     robos: function () { enviarAcao({ tipo: "robos" }); },
-    personagem: function (el) { enviarAcao({ tipo: "personagem", id: el.dataset.id }, function (r) { if (r && r.ok) { S.voz(el.dataset.id, "truco"); } }); },
-    ouvirPers: function (el) { S.voz(el.dataset.id, ["truco", "seis", "aceito"][Math.floor(Math.random() * 3)]); },
+    personagem: function (el) { enviarAcao({ tipo: "personagem", id: el.dataset.id }, function (r) { if (r && r.ok) { S.voz(el.dataset.id, el.dataset.id === "mestre" ? "bordao" : "truco"); } }); },
+    ouvirPers: function (el) { var id = el.dataset.id; S.voz(id, id === "mestre" ? ["bordao", "truco", "provoca"][Math.floor(Math.random() * 3)] : ["truco", "seis", "aceito"][Math.floor(Math.random() * 3)]); },
     regra: function (el) { enviarAcao({ tipo: "config", regra: el.dataset.v }); },
     cenario: function (el) { enviarAcao({ tipo: V.fase === "lobby" ? "config" : "cenario", cenario: el.dataset.v }); },
     tento: function (el) { enviarAcao({ tipo: "config", tento: el.dataset.v }); },
