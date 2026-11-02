@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121419">
+<title>Convite · Caso Aberto</title>
+<meta property="og:title" content="🔍 Convite para o Caso Aberto">
+<meta property="og:description" content="Toque para entrar na sala e investigar o caso com a gente.">
+<style>
+  :root { --fundo:#121419; --painel:#20242d; --linha:#343a47; --texto:#ece6da; --mudo:#9b968c; --latao:#d6a548; --vermelho:#c8372d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(120% 60% at 50% -10%, rgba(214,165,72,.12), transparent 60%), var(--fundo);
+    color: var(--texto); font: 16px/1.5 system-ui, -apple-system, Roboto, "Segoe UI", sans-serif; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  main { width: 100%; max-width: 420px; text-align: center; }
+  .lupa { font-size: 54px; }
+  h1 { font-family: Georgia, serif; font-size: 34px; letter-spacing: 2px; margin: 4px 0 2px; }
+  h1 span { color: var(--vermelho); }
+  .mudo { color: var(--mudo); font-size: 14px; }
+  .codigo { margin: 22px 0; background: var(--painel); border: 1px solid var(--linha); border-radius: 14px; padding: 14px; }
+  .codigo b { display: block; font-family: "Courier New", monospace; font-size: 40px; letter-spacing: 10px; color: var(--latao); }
+  .btn { display: block; width: 100%; padding: 15px; border-radius: 12px; border: 0; font-size: 17px; font-weight: 700; text-decoration: none; margin-top: 12px; cursor: pointer; }
+  .prim { background: var(--vermelho); color: #fff; }
+  .sec { background: transparent; color: var(--texto); border: 1px solid var(--linha); }
+  ol { text-align: left; color: var(--mudo); font-size: 14px; padding-left: 20px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="lupa">🔍</div>
+  <h1>CASO<span>.</span>ABERTO</h1>
+  <div class="mudo">Você foi convidado para investigar um caso</div>
+  <div class="codigo"><div class="mudo">Código da sala</div><b id="cod">····</b></div>
+
+  <div id="comApp">
+    <a id="abrir" class="btn prim" href="#">🔎 Entrar na sala</a>
+    <p class="mudo">Se nada acontecer, abra o app Caso Aberto e digite o código acima.</p>
+    <a class="btn sec" href="?semapp=1" id="naoTenho">Ainda não tenho o jogo</a>
+  </div>
+
+  <div id="semApp" hidden>
+    <a id="baixar" class="btn prim" href="https://github.com/rhmwmdjg-wq/caso-aberto/releases/latest/download/CasoAberto.apk">⬇️ Baixar o jogo (Android)</a>
+    <ol>
+      <li>Toque em baixar e abra o arquivo <b>CasoAberto.apk</b>.</li>
+      <li>Se o celular pedir, permita instalar apps desta fonte.</li>
+      <li>Depois de instalar, volte aqui e toque em <b>Entrar na sala</b>, ou abra o jogo e digite o código.</li>
+    </ol>
+    <a id="abrir2" class="btn sec" href="#">🔎 Já instalei: entrar na sala</a>
+  </div>
+
+  <div id="outro" hidden>
+    <p class="mudo">O Caso Aberto é um jogo para celulares <b>Android</b>. Abra este link no seu celular Android para entrar na sala.</p>
+  </div>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var c = (q.get("c") || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+  var android = /Android/i.test(navigator.userAgent);
+  document.getElementById("cod").textContent = c.length === 4 ? c : "····";
+  var base = location.href.split("?")[0] + "?c=" + c;
+  var intent = "intent://entrar?c=" + c + "#Intent;scheme=casoaberto;package=br.casoaberto.jogo;S.browser_fallback_url=" + encodeURIComponent(base + "&semapp=1") + ";end";
+  ["abrir", "abrir2"].forEach(function (id) { document.getElementById(id).href = android ? intent : "casoaberto://entrar?c=" + c; });
+  document.getElementById("naoTenho").href = base + "&semapp=1";
+  if (!android) { document.getElementById("comApp").hidden = true; document.getElementById("outro").hidden = false; return; }
+  if (q.get("semapp")) { document.getElementById("comApp").hidden = true; document.getElementById("semApp").hidden = false; return; }
+  // tenta abrir o jogo sozinho
+  if (c.length === 4) setTimeout(function () { location.href = intent; }, 400);
+})();
+</script>
+</body>
+</html>
